@@ -53,7 +53,7 @@ public class KafkaDataProducer {
                 currentRecord.put("timestamp", Instant.now().toString());
 
                 String json = mapper.writeValueAsString(currentRecord);
-                // Partition numarasını burada belirt (null yerine partition sayısı)
+
                 ProducerRecord<String, String> record = new ProducerRecord<>("testing", partition, null, json);
                 producer.send(record);
 

@@ -7,6 +7,7 @@ public class SearchRequest {
     private Map<String, String> filters;
     private String mode;
     private Integer lastN;
+    private String kafkaAddress;
 
     public String getTopic() {
         return topic;
@@ -39,4 +40,13 @@ public class SearchRequest {
     public void setLastN(Integer lastN) {
         this.lastN = lastN;
     }
+
+    public String getKafkaAddress() {
+        return kafkaAddress;
+    }
+
+    public void setKafkaAddress(String kafkaAddress) {
+        this.kafkaAddress = kafkaAddress;
+    }
+
 }

@@ -18,9 +18,10 @@ import java.util.concurrent.*;
 public class KafkaSearchController {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
     @GetMapping("/topics")
-    public List<String> getAllTopics() {
-        Properties props = getKafkaProps();
+    public List<String> getAllTopics(@RequestParam String kafkaAddress) {
+        Properties props = getKafkaProps(kafkaAddress);
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             return new ArrayList<>(consumer.listTopics().keySet());
         } catch (Exception e) {
@@ -37,7 +38,7 @@ public class KafkaSearchController {
         Integer lastN = request.getLastN();
         int maxResults = "last".equalsIgnoreCase(mode) ? 1 : Integer.MAX_VALUE;
 
-        Properties props = getKafkaProps();
+        Properties props = getKafkaProps(request.getKafkaAddress());
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             List<PartitionInfo> partitionInfos = consumer.partitionsFor(topic);
@@ -85,11 +86,9 @@ public class KafkaSearchController {
 
             List<String> results = new ArrayList<>();
             for (Future<List<String>> f : futures) {
-
                 List<String> partial = f.get();
                 Collections.reverse(partial);
                 results.addAll(0, partial);
-
                 if (results.size() >= maxResults) break;
             }
             executor.shutdownNow();
@@ -101,9 +100,7 @@ public class KafkaSearchController {
                                           List<TopicPartition> partitions,
                                           Properties props,
                                           Map<String, String> filters) {
-        ObjectMapper mapper = new ObjectMapper();
         int stepSize = 50_000;
-
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
@@ -111,7 +108,6 @@ public class KafkaSearchController {
             for (TopicPartition tp : partitions) {
                 long start = beginningOffsets.get(tp);
                 long end = endOffsets.get(tp);
-
                 long fromOffset = end - 1;
 
                 while (fromOffset >= start) {
@@ -127,11 +123,11 @@ public class KafkaSearchController {
                     for (ConsumerRecord<String, String> record : recordList) {
                         if (matchesFilters(record.value(), filters)) {
                             try {
-                                JsonNode valueNode = mapper.readTree(record.value());
-                                ObjectNode resultNode = mapper.createObjectNode();
+                                JsonNode valueNode = objectMapper.readTree(record.value());
+                                ObjectNode resultNode = objectMapper.createObjectNode();
                                 resultNode.put("offset", record.offset());
                                 resultNode.set("value", valueNode);
-                                return List.of(mapper.writeValueAsString(resultNode));
+                                return List.of(objectMapper.writeValueAsString(resultNode));
                             } catch (Exception e) {
                                 return List.of(String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
                             }
@@ -147,7 +143,6 @@ public class KafkaSearchController {
 
         return List.of();
     }
-
 
     private List<String> consumePartitionRange(String topic, int partition, long startOffset, long endOffset,
                                                Properties props, Map<String, String> filters, int maxResults) {
@@ -166,9 +161,7 @@ public class KafkaSearchController {
                 long blockEnd = currentOffset + batchSize - 1;
 
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
-                System.out.println(records);
                 if (records.isEmpty()) break;
-
 
                 for (ConsumerRecord<String, String> record : records) {
                     if (record.offset() > blockEnd) break;
@@ -178,7 +171,7 @@ public class KafkaSearchController {
                             ObjectNode resultNode = objectMapper.createObjectNode();
                             resultNode.put("offset", record.offset());
                             resultNode.set("value", valueNode);
-                            foundRecords.add( objectMapper.writeValueAsString(resultNode));
+                            foundRecords.add(objectMapper.writeValueAsString(resultNode));
                         } catch (Exception e) {
                             foundRecords.add(0, String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
                         }
@@ -207,9 +200,9 @@ public class KafkaSearchController {
         }
     }
 
-    private Properties getKafkaProps() {
+    private Properties getKafkaProps(String bootstrapServers) {
         Properties props = new Properties();
-        props.put("bootstrap.servers", "localhost:9092");
+        props.put("bootstrap.servers", bootstrapServers);
         props.put("group.id", "web-search-group");
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
