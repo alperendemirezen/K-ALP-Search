@@ -1,0 +1,6 @@
+search\KafkaOffsetFetcher.class
+search\KafkaSearchApplication.class
+search\KafkaMultiThreadSearch.class
+search\KafkaSearchController.class
+search\OffsetRangeConsumer.class
+search\SearchRequest.class
