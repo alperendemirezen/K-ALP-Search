@@ -18,6 +18,7 @@ import java.util.concurrent.*;
 public class KafkaSearchController {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final Map<String, List<Future<List<String>>>> activeRequests = new ConcurrentHashMap<>();
 
     @GetMapping("/topics")
     public List<String> getAllTopics(@RequestParam String kafkaAddress) {
@@ -37,6 +38,11 @@ public class KafkaSearchController {
         String mode = request.getMode();
         Integer lastN = request.getLastN();
         int maxResults = "last".equalsIgnoreCase(mode) ? 1 : Integer.MAX_VALUE;
+
+        String requestId = request.getRequestId();
+
+        List<Future<List<String>>> futures = new ArrayList<>();
+        activeRequests.put(requestId, futures);
 
         Properties props = getKafkaProps(request.getKafkaAddress());
 
@@ -59,7 +65,6 @@ public class KafkaSearchController {
                 return searchLastRecord(topic, partitions, props, filters);
             }
 
-            List<Future<List<String>>> futures = new ArrayList<>();
             ExecutorService executor = Executors.newFixedThreadPool(4);
 
             for (TopicPartition tp : partitions) {
@@ -94,6 +99,127 @@ public class KafkaSearchController {
             executor.shutdownNow();
             return results.size() > maxResults ? results.subList(0, maxResults) : results;
         }
+    }
+
+    @PostMapping("/simple-string-search")
+    public List<String> simpleStringSearch(@RequestBody SearchRequest request) throws InterruptedException, ExecutionException {
+        String topic = request.getTopic();
+        List<String> rawFilters = request.getRawFilters();
+        String mode = request.getMode();
+        Integer lastN = request.getLastN();
+        int maxResults = "last".equalsIgnoreCase(mode) ? 1 : Integer.MAX_VALUE;
+
+        String requestId = request.getRequestId();
+        if (requestId == null || requestId.isEmpty()) {
+            requestId = UUID.randomUUID().toString();
+        }
+
+        List<Future<List<String>>> futures = new ArrayList<>();
+        activeRequests.put(requestId, futures);
+
+        Properties props = getKafkaProps(request.getKafkaAddress());
+
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            List<PartitionInfo> partitionInfos = consumer.partitionsFor(topic);
+            if (partitionInfos == null || partitionInfos.isEmpty()) {
+                return Collections.singletonList("Topic not found.");
+            }
+
+            List<TopicPartition> partitions = new ArrayList<>();
+            for (PartitionInfo p : partitionInfos) {
+                partitions.add(new TopicPartition(p.topic(), p.partition()));
+            }
+
+            consumer.assign(partitions);
+            Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
+            Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
+
+            ExecutorService executor = Executors.newFixedThreadPool(4);
+
+            for (TopicPartition tp : partitions) {
+                long start = beginningOffsets.get(tp);
+                long end = endOffsets.get(tp);
+                if (end < start) continue;
+
+                if ("lastN".equalsIgnoreCase(mode) && lastN != null) {
+                    start = Math.max(end - lastN + 1, start);
+                }
+
+                long rangeSize = Math.max(1, (end - start + 1) / 4);
+
+                for (int i = 0; i < 4; i++) {
+                    long partStart = start + i * rangeSize;
+                    long partEnd = (i == 3) ? end : Math.min(partStart + rangeSize - 1, end);
+
+                    Callable<List<String>> task = () -> consumePartitionRangeSimpleString(
+                            topic, tp.partition(), partStart, partEnd, props, rawFilters, maxResults
+                    );
+                    futures.add(executor.submit(task));
+                }
+            }
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : futures) {
+                results.addAll(f.get());
+                if (results.size() >= maxResults) break;
+            }
+            executor.shutdownNow();
+            return results.size() > maxResults ? results.subList(0, maxResults) : results;
+        }
+    }
+
+    @PostMapping("/cancel")
+    public void cancelSearch(@RequestBody Map<String, String> payload) {
+        String requestId = payload.get("requestId");
+        List<Future<List<String>>> futures = activeRequests.get(requestId);
+        if (futures != null) {
+            for (Future<List<String>> future : futures) {
+                future.cancel(true);
+            }
+            activeRequests.remove(requestId);
+            System.out.println("Cancelled request: " + requestId);
+        }
+    }
+
+    private boolean matchesSimpleStringFilters(String value, List<String> rawFilters) {
+        if (rawFilters == null || rawFilters.isEmpty()) return true;
+        if (value == null) return false;
+
+        String lowerValue = value.toLowerCase();
+
+        for (String filter : rawFilters) {
+            if (!lowerValue.contains(filter.trim().toLowerCase())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<String> consumePartitionRangeSimpleString(String topic, int partition, long startOffset, long endOffset,
+                                                           Properties props, List<String> rawFilters, int maxResults) {
+        List<String> foundRecords = new ArrayList<>();
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            TopicPartition tp = new TopicPartition(topic, partition);
+            consumer.assign(List.of(tp));
+            consumer.seek(tp, startOffset);
+
+            long currentOffset = startOffset;
+
+            while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                if (records.isEmpty()) break;
+
+                for (ConsumerRecord<String, String> record : records) {
+                    if (record.offset() > endOffset) break;
+                    if (matchesSimpleStringFilters(record.value(), rawFilters)) {
+                        foundRecords.add(String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
+                        if (foundRecords.size() >= maxResults) break;
+                    }
+                    currentOffset = record.offset() + 1;
+                }
+            }
+        }
+        return foundRecords;
     }
 
     private List<String> searchLastRecord(String topic,
@@ -133,14 +259,12 @@ public class KafkaSearchController {
                             }
                         }
                     }
-
                     fromOffset = batchStart - 1;
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-
         return List.of();
     }
 

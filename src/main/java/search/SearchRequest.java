@@ -1,14 +1,18 @@
 package search;
 
+import java.util.List;
 import java.util.Map;
 
 public class SearchRequest {
     private String topic;
     private Map<String, String> filters;
+    private List<String> rawFilters; // <- String bazlı filtreler
     private String mode;
     private Integer lastN;
     private String kafkaAddress;
+    private String requestId; // <- Her arama için benzersiz ID
 
+    // Getters & Setters
     public String getTopic() {
         return topic;
     }
@@ -23,6 +27,14 @@ public class SearchRequest {
 
     public void setFilters(Map<String, String> filters) {
         this.filters = filters;
+    }
+
+    public List<String> getRawFilters() {
+        return rawFilters;
+    }
+
+    public void setRawFilters(List<String> rawFilters) {
+        this.rawFilters = rawFilters;
     }
 
     public String getMode() {
@@ -49,4 +61,11 @@ public class SearchRequest {
         this.kafkaAddress = kafkaAddress;
     }
 
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
+    }
 }
