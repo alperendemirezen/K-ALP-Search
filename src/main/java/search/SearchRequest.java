@@ -10,7 +10,9 @@ public class SearchRequest {
     private String mode;
     private Integer lastN;
     private String kafkaAddress;
-    private String requestId; // <- Her arama için benzersiz ID
+    private String requestId;
+    private Long startOffset;
+    private Long endOffset;
 
     // Getters & Setters
     public String getTopic() {
@@ -67,5 +69,21 @@ public class SearchRequest {
 
     public void setRequestId(String requestId) {
         this.requestId = requestId;
+    }
+
+    public Long getStartOffset() {
+        return startOffset;
+    }
+
+    public void setStartOffset(Long startOffset) {
+        this.startOffset = startOffset;
+    }
+
+    public Long getEndOffset() {
+        return endOffset;
+    }
+
+    public void setEndOffset(Long endOffset) {
+        this.endOffset = endOffset;
     }
 }

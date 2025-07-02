@@ -50,6 +50,7 @@
       border-radius: 5px;
       cursor: pointer;
       position: relative;
+      user-select: none;
     }
     .result-tab.active {
       background-color: #cce5ff;
@@ -115,10 +116,18 @@
             <option value="all">All</option>
             <option value="last">Last</option>
             <option value="lastN">LastN</option>
+            <option value="offsetRange">Manuel</option>
         </select>
         <div id="lastNContainer" class="mt-2" style="display: none;">
             <label for="lastNCount" class="form-label">Kaç kayıt geriye gidilsin? (örn: 1000000)</label>
             <input type="number" id="lastNCount" class="form-control" min="1" />
+        </div>
+        <div id="offsetRangeContainer" class="mt-2" style="display: none;">
+            <div><strong>Topic Offset Range:</strong> Min: <span id="minOffset">?</span>, Max: <span id="maxOffset">?</span></div>
+            <label for="startOffset" class="form-label mt-2">Start Offset</label>
+            <input type="number" id="startOffset" class="form-control" />
+            <label for="endOffset" class="form-label mt-2">End Offset</label>
+            <input type="number" id="endOffset" class="form-control" />
         </div>
     </div>
 
@@ -141,7 +150,26 @@
 
   window.onload = function () {
     document.getElementById("searchMode").addEventListener("change", function () {
-      document.getElementById("lastNContainer").style.display = this.value === "lastN" ? "block" : "none";
+      const mode = this.value;
+      document.getElementById("lastNContainer").style.display = mode === "lastN" ? "block" : "none";
+      document.getElementById("offsetRangeContainer").style.display = mode === "offsetRange" ? "block" : "none";
+
+      if (mode === "offsetRange") {
+        const topic = document.getElementById("topicSelect").value;
+        const kafkaAddress = document.getElementById("kafkaAddress").value.trim();
+        if (!topic || !kafkaAddress) return;
+
+        fetch(`http://localhost:7070/search/topic-offsets?topic=${topic}&kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
+          .then(res => res.json())
+          .then(data => {
+            document.getElementById("minOffset").textContent = data.startOffset;
+            document.getElementById("maxOffset").textContent = data.endOffset;
+          })
+          .catch(() => {
+            document.getElementById("minOffset").textContent = "?";
+            document.getElementById("maxOffset").textContent = "?";
+          });
+      }
     });
   };
 
@@ -193,7 +221,8 @@
         row.className = "row g-2 mb-2";
         row.innerHTML = `
           <div class="col-md-6"><input type="text" id="key_${i}" class="form-control" placeholder="Key ${i + 1}"></div>
-          <div class="col-md-6"><input type="text" id="value_${i}" class="form-control" placeholder="Value ${i + 1}"></div>`;
+          <div class="col-md-6"><input type="text" id="value_${i}" class="form-control" placeholder="Value ${i + 1}"></div>
+        `;
         container.appendChild(row);
       }
     } else {
@@ -217,9 +246,21 @@
     const count = parseInt(document.getElementById("filterCount").value);
     const mode = document.getElementById("searchMode").value;
     const lastN = mode === "lastN" ? parseInt(document.getElementById("lastNCount").value || 0) : null;
+    const startOffset = mode === "offsetRange" ? parseInt(document.getElementById("startOffset").value || 0) : null;
+    const endOffset = mode === "offsetRange" ? parseInt(document.getElementById("endOffset").value || 0) : null;
     const id = `result_${++searchCount}`;
 
+    if (mode === "offsetRange") {
+      if (isNaN(startOffset) || isNaN(endOffset) || startOffset < 0 || endOffset < startOffset) {
+        return alert("Lütfen geçerli bir offset aralığı giriniz.");
+      }
+    }
+
     let body = { topic, mode, lastN, kafkaAddress, requestId: id };
+    if (mode === "offsetRange") {
+      body.startOffset = startOffset;
+      body.endOffset = endOffset;
+    }
 
     if (filterMode === "json") {
       let filters = {};
@@ -240,6 +281,11 @@
       body.rawFilters = rawFilters;
     }
 
+    // Yeni AbortController oluştur
+    const controller = new AbortController();
+    abortControllers[id] = controller;
+
+    // Yeni tab ve result box oluştur
     const tab = document.createElement("div");
     tab.className = "result-tab";
     tab.id = id + "_tab";
@@ -257,55 +303,113 @@
     box.style.display = "none";
     document.getElementById("resultBoxes").appendChild(box);
 
-    const controller = new AbortController();
-    abortControllers[id] = controller;
-
     const url = filterMode === "json" ? "http://localhost:7070/search" : "http://localhost:7070/search/simple-string-search";
 
     fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: controller.signal,
+      signal: controller.signal
     })
-      .then((res) => res.json())
-      .then((data) => {
-        tab.querySelector(".spinner-border").remove();
-        box.innerHTML = "";
+    .then(res => res.json())
+    .then(data => {
+      // Spinner kaldır
+      const spinner = tab.querySelector(".spinner-border");
+      if (spinner) spinner.remove();
 
-        const summary = document.createElement("div");
-        summary.className = "filter-summary";
-        summary.innerHTML = `
-          <div><strong>Filters:</strong> ${
-            filterMode === "json"
-              ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
-              : body.rawFilters.join(", ")
-          }</div>
-          <div><strong>Mode:</strong> ${mode}${mode === "lastN" ? ` (${lastN})` : ""}</div>
-          <hr style="margin: 0.4rem 0;" />`;
-        box.appendChild(summary);
+      box.innerHTML = "";
 
-        if (!data || data.length === 0) {
-          box.innerHTML += "<em>No matching results.</em>";
-          return;
+      const summary = document.createElement("div");
+      summary.className = "filter-summary";
+      summary.innerHTML = `
+        <div><strong>Filter Type:</strong> ${filterMode === "json" ? "JSON" : "String"}</div>
+        <div><strong>Filters:</strong> ${
+          filterMode === "json"
+            ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
+            : body.rawFilters.join(", ")
+        }</div>
+        <div><strong>Mode:</strong> ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "offsetRange" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}</div>
+        <hr style="margin: 0.4rem 0;" />
+      `;
+      box.appendChild(summary);
+
+      summary.style.position = "relative";
+
+const downloadBtn = document.createElement("button");
+downloadBtn.className = "btn btn-sm btn-outline-primary";
+downloadBtn.style.position = "absolute";
+downloadBtn.style.top = "0.2rem";
+downloadBtn.style.right = "0.5rem";
+downloadBtn.title = "Download results";
+downloadBtn.innerHTML = "⬇ Download";
+
+downloadBtn.onclick = () => {
+  let headerLines = [];
+  headerLines.push(`Filter Type: ${filterMode === "json" ? "JSON" : "String"}`);
+
+  if (filterMode === "json") {
+    headerLines.push("Filters: " + Object.entries(body.filters).map(([k,v]) => `${k}=${v}`).join(", "));
+  } else {
+    headerLines.push("Filters: " + body.rawFilters.join(", "));
+  }
+
+  headerLines.push(`Mode: ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "offsetRange" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}`);
+
+  const resultsText = Array.from(box.querySelectorAll(".record-entry"))
+    .map(div => div.textContent)
+    .join("\n\n");
+
+  const textContent = headerLines.join("\n") + "\n\n" + resultsText;
+
+  const blob = new Blob([textContent], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = id + ".txt";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+summary.appendChild(downloadBtn);
+
+      if (!data || data.length === 0) {
+        box.innerHTML += "<em>No matching results.</em>";
+        return;
+      }
+
+      data.forEach(record => {
+        const div = document.createElement("div");
+        div.className = "record-entry";
+        try {
+          const parsed = JSON.parse(record);
+          div.innerHTML = `<strong>Offset:</strong> ${parsed.offset}<br><pre>${JSON.stringify(parsed.value, null, 2)}</pre>`;
+        } catch {
+          div.textContent = record;
         }
-
-        data.forEach((record) => {
-          const div = document.createElement("div");
-          div.className = "record-entry";
-          try {
-            const parsed = JSON.parse(record);
-            div.innerHTML = `<strong>Offset:</strong> ${parsed.offset}<br><pre>${JSON.stringify(parsed.value, null, 2)}</pre>`;
-          } catch {
-            div.textContent = record;
-          }
-          box.appendChild(div);
-        });
-      })
-      .catch((err) => {
-        if (err.name === "AbortError") return;
-        alert("Kafka sorgusu sırasında hata oluştu.");
+        box.appendChild(div);
       });
+    })
+    .catch(err => {
+      if (err.name === "AbortError") return;
+      alert("Kafka sorgusu sırasında hata oluştu.");
+    });
+  }
+
+  function toggleResult(id) {
+    const allTabs = document.querySelectorAll(".result-tab");
+    const allBoxes = document.querySelectorAll(".result-box");
+    allTabs.forEach(tab => tab.classList.remove("active"));
+    allBoxes.forEach(box => (box.style.display = "none"));
+
+    const tab = document.getElementById(id + "_tab");
+    const box = document.getElementById(id + "_box");
+    if (activeTabId === id) {
+      activeTabId = null;
+    } else {
+      tab.classList.add("active");
+      box.style.display = "block";
+      activeTabId = id;
+    }
   }
 
   function killResult(id) {
@@ -326,23 +430,7 @@
       body: JSON.stringify({ requestId: id })
     });
   }
-
-  function toggleResult(id) {
-    const allTabs = document.querySelectorAll(".result-tab");
-    const allBoxes = document.querySelectorAll(".result-box");
-    allTabs.forEach((tab) => tab.classList.remove("active"));
-    allBoxes.forEach((box) => (box.style.display = "none"));
-
-    const tab = document.getElementById(id + "_tab");
-    const box = document.getElementById(id + "_box");
-    if (activeTabId === id) {
-      activeTabId = null;
-    } else {
-      tab.classList.add("active");
-      box.style.display = "block";
-      activeTabId = id;
-    }
-  }
 </script>
+
 </body>
 </html>

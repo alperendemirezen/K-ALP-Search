@@ -30,6 +30,30 @@ public class KafkaSearchController {
             return Collections.emptyList();
         }
     }
+    @GetMapping("/topic-offsets")
+    public Map<String, Long> getOffsets(@RequestParam String kafkaAddress, @RequestParam String topic) {
+        Properties props = getKafkaProps(kafkaAddress);
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            List<PartitionInfo> partitions = consumer.partitionsFor(topic);
+            if (partitions == null || partitions.isEmpty()) {
+                System.out.println(Map.of("startOffset", 0L, "endOffset", 0L));
+                return Map.of("startOffset", 0L, "endOffset", 0L);
+            }
+
+            List<TopicPartition> topicPartitions = new ArrayList<>();
+            for (PartitionInfo p : partitions) {
+                topicPartitions.add(new TopicPartition(p.topic(), p.partition()));
+            }
+
+            Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(topicPartitions);
+            Map<TopicPartition, Long> endOffsets = consumer.endOffsets(topicPartitions);
+
+            long min = beginningOffsets.values().stream().min(Long::compareTo).orElse(0L);
+            long max = endOffsets.values().stream().max(Long::compareTo).orElse(0L);
+
+            return Map.of("startOffset", min, "endOffset", max - 1); // end-1 çünkü end offset dahil değil
+        }
+    }
 
     @PostMapping
     public List<String> search(@RequestBody SearchRequest request) throws InterruptedException, ExecutionException {
@@ -71,6 +95,11 @@ public class KafkaSearchController {
                 long start = beginningOffsets.get(tp);
                 long end = endOffsets.get(tp);
                 if (end < start) continue;
+
+                if ("offsetRange".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                    start = Math.max(start, request.getStartOffset());
+                    end = Math.min(end, request.getEndOffset());
+                }
 
                 if ("lastN".equalsIgnoreCase(mode) && lastN != null) {
                     start = Math.max(end - lastN + 1, start);
@@ -130,6 +159,10 @@ public class KafkaSearchController {
                 partitions.add(new TopicPartition(p.topic(), p.partition()));
             }
 
+            if ("last".equalsIgnoreCase(mode)) {
+                return searchLastRecordSimpleString(topic, partitions, props, rawFilters);
+            }
+
             consumer.assign(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
@@ -140,6 +173,11 @@ public class KafkaSearchController {
                 long start = beginningOffsets.get(tp);
                 long end = endOffsets.get(tp);
                 if (end < start) continue;
+
+                if ("offsetRange".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                    start = Math.max(start, request.getStartOffset());
+                    end = Math.min(end, request.getEndOffset());
+                }
 
                 if ("lastN".equalsIgnoreCase(mode) && lastN != null) {
                     start = Math.max(end - lastN + 1, start);
@@ -160,7 +198,9 @@ public class KafkaSearchController {
 
             List<String> results = new ArrayList<>();
             for (Future<List<String>> f : futures) {
-                results.addAll(f.get());
+                List<String> partial = f.get();
+                Collections.reverse(partial);
+                results.addAll(0, partial);
                 if (results.size() >= maxResults) break;
             }
             executor.shutdownNow();
@@ -226,7 +266,8 @@ public class KafkaSearchController {
                                           List<TopicPartition> partitions,
                                           Properties props,
                                           Map<String, String> filters) {
-        int stepSize = 50_000;
+        int stepSize = 500;
+
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
@@ -234,39 +275,104 @@ public class KafkaSearchController {
             for (TopicPartition tp : partitions) {
                 long start = beginningOffsets.get(tp);
                 long end = endOffsets.get(tp);
-                long fromOffset = end - 1;
+                long fromOffset = end;
 
-                while (fromOffset >= start) {
-                    long batchStart = Math.max(start, fromOffset - stepSize + 1);
+                while (fromOffset > start) {
+                    long batchStart = Math.max(start, fromOffset - stepSize);
 
                     consumer.assign(Collections.singletonList(tp));
                     consumer.seek(tp, batchStart);
 
                     ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
-                    List<ConsumerRecord<String, String>> recordList = new ArrayList<>(records.records(tp));
-                    Collections.reverse(recordList);
+                    List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
-                    for (ConsumerRecord<String, String> record : recordList) {
+                    for (ConsumerRecord<String, String> record : records.records(tp)) {
+                        System.out.println(records.count());
+                        if (record.offset() >= end) continue;
                         if (matchesFilters(record.value(), filters)) {
-                            try {
-                                JsonNode valueNode = objectMapper.readTree(record.value());
-                                ObjectNode resultNode = objectMapper.createObjectNode();
-                                resultNode.put("offset", record.offset());
-                                resultNode.set("value", valueNode);
-                                return List.of(objectMapper.writeValueAsString(resultNode));
-                            } catch (Exception e) {
-                                return List.of(String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
-                            }
+                            matchedRecords.add(record);
                         }
                     }
-                    fromOffset = batchStart - 1;
+
+                    if (!matchedRecords.isEmpty()) {
+                        ConsumerRecord<String, String> maxOffsetRecord = Collections.max(
+                                matchedRecords,
+                                Comparator.comparingLong(ConsumerRecord::offset)
+                        );
+                        try {
+                            JsonNode valueNode = objectMapper.readTree(maxOffsetRecord.value());
+                            ObjectNode resultNode = objectMapper.createObjectNode();
+                            resultNode.put("offset", maxOffsetRecord.offset());
+                            resultNode.set("value", valueNode);
+                            return List.of(objectMapper.writeValueAsString(resultNode));
+                        } catch (Exception e) {
+                            return List.of(String.format("{\"offset\": %d, \"value\": \"%s\"}",
+                                    maxOffsetRecord.offset(), maxOffsetRecord.value()));
+                        }
+                    }
+
+                    fromOffset = batchStart; // Geriye git
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        return List.of(); // Hiçbir şey bulunamadıysa
+    }
+
+    private List<String> searchLastRecordSimpleString(String topic,
+                                                      List<TopicPartition> partitions,
+                                                      Properties props,
+                                                      List<String> rawFilters) {
+        int stepSize = 500;
+
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
+            Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
+
+            for (TopicPartition tp : partitions) {
+                long start = beginningOffsets.get(tp);
+                long end = endOffsets.get(tp);
+                long fromOffset = end;
+
+                while (fromOffset > start) {
+                    long batchStart = Math.max(start, fromOffset - stepSize);
+
+                    consumer.assign(Collections.singletonList(tp));
+                    consumer.seek(tp, batchStart);
+
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                    List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
+
+                    for (ConsumerRecord<String, String> record : records.records(tp)) {
+                        if (record.offset() >= end) continue;
+                        if (matchesSimpleStringFilters(record.value(), rawFilters)) {
+                            matchedRecords.add(record);
+                        }
+                    }
+
+                    if (!matchedRecords.isEmpty()) {
+                        ConsumerRecord<String, String> maxOffsetRecord = Collections.max(
+                                matchedRecords,
+                                Comparator.comparingLong(ConsumerRecord::offset)
+                        );
+                        return List.of(String.format("{\"offset\": %d, \"value\": \"%s\"}",
+                                maxOffsetRecord.offset(), maxOffsetRecord.value()));
+                    }
+
+                    fromOffset = batchStart;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         return List.of();
     }
+
+
+
 
     private List<String> consumePartitionRange(String topic, int partition, long startOffset, long endOffset,
                                                Properties props, Map<String, String> filters, int maxResults) {
