@@ -76,12 +76,14 @@
 <div class="container">
     <h1 class="mb-4">🔎 K-Search</h1>
 
+    <!-- Kafka Address -->
     <div class="section">
         <label for="kafkaAddress" class="form-label">Kafka Address (IP:PORT)</label>
         <input type="text" id="kafkaAddress" class="form-control" placeholder="e.g., 127.0.0.1:9092" />
         <button onclick="loadTopics()" class="btn btn-primary mt-2">Load Topics</button>
     </div>
 
+    <!-- Topic Selection -->
     <div class="section" id="topicSection" style="display: none;">
         <label for="topicSelect" class="form-label">Kafka Topic</label>
         <select id="topicSelect" class="form-select">
@@ -90,7 +92,61 @@
         <button onclick="nextStep()" class="btn btn-primary mt-3">Next</button>
     </div>
 
-    <div class="mt-3">
+    <!-- Mode Selection -->
+    <div class="section" id="searchOptions" style="display: none;">
+        <label for="searchMode" class="form-label">Mode</label>
+        <select id="searchMode" class="form-select">
+            <option value="all">all</option>
+            <option value="last">last</option>
+            <option value="firstByDate">date</option>
+            <option value="lastN">lastN</option>
+            <option value="offsetRange">manual</option>
+            <option value="copy">copy</option>
+        </select>
+
+        <div id="firstByDateContainer" class="mt-2" style="display: none;">
+            <div><strong>Topic Partitions:</strong> <span id="firstByDatePartitions">Loading...</span></div>
+            <label for="dateKey" class="form-label mt-2">Date Field Key (e.g. date)</label>
+            <input type="text" id="dateKey" class="form-control" placeholder="Key to check (e.g., date)" />
+
+            <label for="targetDate" class="form-label mt-2">Target Date</label>
+            <input type="text" id="targetDate" class="form-control" placeholder="Format: YYYYMMDD" />
+
+            <label for="partitionInputFirst" class="form-label mt-2">Partition</label>
+            <input type="number" id="partitionInputFirst" class="form-control" value="0" min="0" />
+        </div>
+
+        <div id="lastNContainer" class="mt-2" style="display: none;">
+            <label for="lastNCount" class="form-label">How many messages back? (e.g., 1000000)</label>
+            <input type="number" id="lastNCount" class="form-control" min="1" />
+        </div>
+
+        <div id="offsetRangeContainer" class="mt-2" style="display: none;">
+            <div><strong>Topic Offset Range:</strong> Min: <span id="minOffset">?</span>, Max: <span id="maxOffset">?</span></div>
+            <label for="startOffset" class="form-label mt-2">Start Offset</label>
+            <input type="number" id="startOffset" class="form-control" />
+            <label for="endOffset" class="form-label mt-2">End Offset</label>
+            <input type="number" id="endOffset" class="form-control" />
+        </div>
+
+        <div id="copyContainer" class="mt-2" style="display: none;">
+            <div><strong>Topic Offset Range:</strong> Min: <span id="copyMinOffset">?</span>, Max: <span id="copyMaxOffset">?</span></div>
+            <div><strong>Topic Partitions:</strong> <span id="partitionList">Loading...</span></div>
+            <label for="copyStartOffset" class="form-label mt-2">Start Offset</label>
+            <input type="number" id="copyStartOffset" class="form-control" />
+            <label for="copyEndOffset" class="form-label mt-2">End Offset</label>
+            <input type="number" id="copyEndOffset" class="form-control" />
+            <label for="partitionInput" class="form-label mt-2">Partition</label>
+            <input type="number" id="partitionInput" class="form-control" value="0" min="0" />
+            <label for="targetTopic" class="form-label mt-2">Target Topic</label>
+            <input type="text" id="targetTopic" class="form-control" placeholder="New or existing topic name" />
+        </div>
+
+        <button onclick="showFilterStep()" class="btn btn-primary mt-3">Continue</button>
+    </div>
+
+    <!-- Filter Mode + Filter Step -->
+    <div id="filterModeContainer" style="display: none;">
         <label>Filter Mode:</label>
         <div class="form-check form-check-inline">
             <input class="form-check-input" type="radio" name="modeType" id="stringMode" value="string" checked onchange="onFilterModeChange()" />
@@ -100,41 +156,29 @@
             <input class="form-check-input" type="radio" name="modeType" id="jsonMode" value="json" onchange="onFilterModeChange()" />
             <label class="form-check-label" for="jsonMode">JSON</label>
         </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="modeType" id="patternMode" value="pattern" onchange="onFilterModeChange()" />
+            <label class="form-check-label" for="patternMode">Pattern</label>
+        </div>
+
+        <hr />
     </div>
 
     <div class="section" id="filterStep" style="display: none;">
         <label for="filterCount" class="form-label">How many filters?</label>
         <input type="number" id="filterCount" class="form-control" min="0" value="0" />
-        <button onclick="generateFilters()" class="btn btn-primary mt-3">Continue</button>
+        <button onclick="generateFilters()" class="btn btn-primary mt-3">Create Filters</button>
     </div>
 
-    <div class="section" id="filtersContainer"></div>
+    <!-- Filters -->
+    <div class="section" id="filtersContainer" style="display: none;"></div>
 
-    <div class="section" id="searchOptions" style="display: none;">
-        <label for="searchMode" class="form-label">Search Mode</label>
-        <select id="searchMode" class="form-select">
-            <option value="all">All</option>
-            <option value="last">Last</option>
-            <option value="lastN">LastN</option>
-            <option value="offsetRange">Manuel</option>
-        </select>
-        <div id="lastNContainer" class="mt-2" style="display: none;">
-            <label for="lastNCount" class="form-label">Kaç kayıt geriye gidilsin? (örn: 1000000)</label>
-            <input type="number" id="lastNCount" class="form-control" min="1" />
-        </div>
-        <div id="offsetRangeContainer" class="mt-2" style="display: none;">
-            <div><strong>Topic Offset Range:</strong> Min: <span id="minOffset">?</span>, Max: <span id="maxOffset">?</span></div>
-            <label for="startOffset" class="form-label mt-2">Start Offset</label>
-            <input type="number" id="startOffset" class="form-control" />
-            <label for="endOffset" class="form-label mt-2">End Offset</label>
-            <input type="number" id="endOffset" class="form-control" />
-        </div>
-    </div>
-
+    <!-- Final Submit -->
     <div id="finalSearch" class="mb-3" style="display: none;">
-        <button onclick="searchKafka()" class="btn btn-success">Search Kafka</button>
+        <button id="searchButton" onclick="searchKafka()" class="btn btn-success">Search Kafka</button>
     </div>
 
+    <!-- Results -->
     <div class="section">
         <h5>Results:</h5>
         <div id="resultTabs"></div>
@@ -144,101 +188,158 @@
 
 <script>
   let searchCount = 0;
-  let activeTabId = null;
-  const abortControllers = {};
-  let filterMode = "string";
+let activeTabId = null;
+const abortControllers = {};
+let filterMode = "string";
 
-  window.onload = function () {
-    document.getElementById("searchMode").addEventListener("change", function () {
-      const mode = this.value;
-      document.getElementById("lastNContainer").style.display = mode === "lastN" ? "block" : "none";
-      document.getElementById("offsetRangeContainer").style.display = mode === "offsetRange" ? "block" : "none";
+function loadTopics() {
+  const kafkaAddress = document.getElementById("kafkaAddress").value.trim();
+  if (!kafkaAddress) return alert("Kafka address is required");
 
-      if (mode === "offsetRange") {
-        const topic = document.getElementById("topicSelect").value;
-        const kafkaAddress = document.getElementById("kafkaAddress").value.trim();
-        if (!topic || !kafkaAddress) return;
-
-        fetch(`http://localhost:7070/search/topic-offsets?topic=${topic}&kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
-          .then(res => res.json())
-          .then(data => {
-            document.getElementById("minOffset").textContent = data.startOffset;
-            document.getElementById("maxOffset").textContent = data.endOffset;
-          })
-          .catch(() => {
-            document.getElementById("minOffset").textContent = "?";
-            document.getElementById("maxOffset").textContent = "?";
-          });
-      }
-    });
-  };
-
-  function loadTopics() {
-    const kafkaAddress = document.getElementById("kafkaAddress").value.trim();
-    if (!kafkaAddress) return alert("Kafka address is required");
-
-    fetch(`http://localhost:7070/search/topics?kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
-      .then(res => res.json())
-      .then(data => {
-        const select = document.getElementById("topicSelect");
-        select.innerHTML = '<option disabled selected value="">Select a topic</option>';
-        data.forEach(topic => {
-          const option = document.createElement("option");
-          option.value = topic;
-          option.textContent = topic;
-          select.appendChild(option);
-        });
-        document.getElementById("topicSection").style.display = "block";
-      })
-      .catch(err => {
-        console.error(err);
-        alert("Failed to load topics.");
+  fetch(`http://localhost:7070/search/topics?kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
+    .then(res => res.json())
+    .then(data => {
+      const select = document.getElementById("topicSelect");
+      select.innerHTML = '<option disabled selected value="">Select a topic</option>';
+      data.forEach(topic => {
+        const option = document.createElement("option");
+        option.value = topic;
+        option.textContent = topic;
+        select.appendChild(option);
       });
+      document.getElementById("topicSection").style.display = "block";
+    })
+    .catch(() => alert("Failed to load topics."));
+}
+
+function nextStep() {
+  if (!document.getElementById("topicSelect").value) return alert("Please select a topic.");
+  document.getElementById("searchOptions").style.display = "block";
+}
+
+function showFilterStep() {
+  const mode = document.getElementById("searchMode").value;
+
+  if (mode === "copy") {
+    const targetTopic = document.getElementById("targetTopic").value.trim();
+    if (!targetTopic) {
+      alert("Please enter a target topic name before continuing.");
+      return;
+    }
   }
 
-  function nextStep() {
-    if (!document.getElementById("topicSelect").value) return alert("Please select a topic.");
-    document.getElementById("filterStep").style.display = "block";
-  }
+  // ŞU SATIRI EKLE!
+  document.getElementById("filterModeContainer").style.display = "block";
 
-  function onFilterModeChange() {
-    filterMode = document.querySelector('input[name="modeType"]:checked').value;
-    document.getElementById("filtersContainer").innerHTML = "";
-    document.getElementById("filterCount").value = 0;
-    document.getElementById("finalSearch").style.display = "none";
-    document.getElementById("searchOptions").style.display = "none";
-  }
+  document.getElementById("filterStep").style.display = "block";
+}
+function onFilterModeChange() {
+  filterMode = document.querySelector('input[name="modeType"]:checked').value;
+  document.getElementById("filtersContainer").innerHTML = "";
+  document.getElementById("filterCount").value = 0;
+  document.getElementById("finalSearch").style.display = "none";
+  document.getElementById("filtersContainer").style.display = "none";
 
-  function generateFilters() {
-    const count = parseInt(document.getElementById("filterCount").value);
-    const container = document.getElementById("filtersContainer");
-    container.innerHTML = "";
-    if (isNaN(count) || count < 0) return alert("Invalid filter count");
 
-    if (filterMode === "json") {
-      for (let i = 0; i < count; i++) {
-        const row = document.createElement("div");
-        row.className = "row g-2 mb-2";
-        row.innerHTML = `
-          <div class="col-md-6"><input type="text" id="key_${i}" class="form-control" placeholder="Key ${i + 1}"></div>
-          <div class="col-md-6"><input type="text" id="value_${i}" class="form-control" placeholder="Value ${i + 1}"></div>
-        `;
-        container.appendChild(row);
-      }
-    } else {
-      for (let i = 0; i < count; i++) {
-        const input = document.createElement("input");
-        input.type = "text";
-        input.id = `raw_${i}`;
-        input.className = "form-control mb-2";
-        input.placeholder = `Enter filter ${i + 1}`;
-        container.appendChild(input);
-      }
+
+}
+
+window.onload = function () {
+  document.getElementById("searchMode").addEventListener("change", function () {
+    const mode = this.value;
+
+    // Container'ları sıfırla
+    document.getElementById("lastNContainer").style.display = "none";
+    document.getElementById("offsetRangeContainer").style.display = "none";
+    document.getElementById("copyContainer").style.display = "none";
+
+    if (mode === "firstByDate") {
+  document.getElementById("firstByDateContainer").style.display = "block";
+  loadOffsets("unused", "unused", null, null, "firstByDatePartitions");
+}
+
+    if (mode === "lastN") {
+      document.getElementById("lastNContainer").style.display = "block";
     }
 
-    document.getElementById("finalSearch").style.display = "block";
-    document.getElementById("searchOptions").style.display = "block";
+    if (mode === "offsetRange") {
+      document.getElementById("offsetRangeContainer").style.display = "block";
+      loadOffsets("minOffset", "maxOffset");
+    }
+
+    if (mode === "copy") {
+  document.getElementById("copyContainer").style.display = "block";
+  loadOffsets("copyMinOffset", "copyMaxOffset", "copyStartOffset", "copyEndOffset");
+}
+
+    // Buton metni ayarı
+    const searchButton = document.getElementById("searchButton");
+    if (mode === "copy") {
+      searchButton.textContent = "Copy";
+    } else {
+      searchButton.textContent = "Search";
+    }
+  });
+};
+
+function loadOffsets(minId, maxId, startInputId = null, endInputId = null) {
+  const topic = document.getElementById("topicSelect").value;
+  const kafkaAddress = document.getElementById("kafkaAddress").value.trim();
+  if (!topic || !kafkaAddress) return;
+
+  fetch(`http://localhost:7070/search/topic-offsets?topic=${topic}&kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById(minId).textContent = data.startOffset;
+      document.getElementById(maxId).textContent = data.endOffset;
+
+      if (startInputId && endInputId) {
+        document.getElementById(startInputId).value = data.startOffset;
+        document.getElementById(endInputId).value = data.endOffset;
+      }
+
+      // BURASI EKLENDİ
+      if (data.partitions) {
+        document.getElementById("partitionList").textContent = data.partitions.join(", ");
+      }
+    })
+    .catch(() => {
+      document.getElementById(minId).textContent = "?";
+      document.getElementById(maxId).textContent = "?";
+      document.getElementById("partitionList").textContent = "N/A";
+    });
+}
+
+function generateFilters() {
+  const count = parseInt(document.getElementById("filterCount").value);
+  const container = document.getElementById("filtersContainer");
+  container.innerHTML = "";
+  if (isNaN(count) || count < 0) return alert("Invalid filter count");
+
+  if (filterMode === "json") {
+    for (let i = 0; i < count; i++) {
+      const row = document.createElement("div");
+      row.className = "row g-2 mb-2";
+      row.innerHTML = `
+        <div class="col-md-6"><input type="text" id="key_${i}" class="form-control" placeholder="Key ${i + 1}"></div>
+        <div class="col-md-6"><input type="text" id="value_${i}" class="form-control" placeholder="Value ${i + 1}"></div>
+      `;
+      container.appendChild(row);
+    }
+  } else {
+    for (let i = 0; i < count; i++) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.id = `raw_${i}`;
+      input.className = "form-control mb-2";
+      input.placeholder = filterMode === "pattern" ? `Enter regex pattern ${i + 1}` : `Enter filter ${i + 1}`;
+      container.appendChild(input);
+    }
   }
+
+  document.getElementById("filtersContainer").style.display = "block";
+  document.getElementById("finalSearch").style.display = "block";
+}
 
   function searchKafka() {
     const topic = document.getElementById("topicSelect").value;
@@ -257,10 +358,49 @@
     }
 
     let body = { topic, mode, lastN, kafkaAddress, requestId: id };
-    if (mode === "offsetRange") {
-      body.startOffset = startOffset;
-      body.endOffset = endOffset;
-    }
+
+// OffsetRange modu (manuel aralık)
+if (mode === "offsetRange") {
+  body.startOffset = startOffset;
+  body.endOffset = endOffset;
+  body.filterMode = filterMode;
+}
+
+if (mode === "firstByDate") {
+  const dateKey = document.getElementById("dateKey").value.trim();
+  const targetDate = document.getElementById("targetDate").value.trim();
+  const partition = parseInt(document.getElementById("partitionInputFirst").value);
+
+  if (!dateKey || !targetDate || isNaN(partition)) {
+    return alert("Please provide date key, date (YYYYMMDD), and partition.");
+  }
+
+  body.dateKey = dateKey;
+  body.date = targetDate;
+  body.partition = partition;
+  body.filterMode = filterMode;
+}
+
+// Copy modu
+if (mode === "copy") {
+  const copyStart = parseInt(document.getElementById("copyStartOffset").value || 0);
+  const copyEnd = parseInt(document.getElementById("copyEndOffset").value || 0);
+  const targetTopic = document.getElementById("targetTopic").value.trim();
+  const partition = parseInt(document.getElementById("partitionInput").value || "0");
+
+  if (!targetTopic) return alert("Please enter a target topic name.");
+  if (isNaN(copyStart) || isNaN(copyEnd) || copyStart < 0 || copyEnd < copyStart) {
+    return alert("Please enter valid offset range.");
+  }
+
+  body.startOffset = copyStart;
+  body.endOffset = copyEnd;
+  body.targetTopic = targetTopic;
+  body.partition = partition;
+  body.filterMode = filterMode;  // BU SATIR ÖNEMLİ
+
+}
+
 
     if (filterMode === "json") {
       let filters = {};
@@ -303,7 +443,14 @@
     box.style.display = "none";
     document.getElementById("resultBoxes").appendChild(box);
 
-    const url = filterMode === "json" ? "http://localhost:7070/search" : "http://localhost:7070/search/simple-string-search";
+let url;
+if (filterMode === "json") {
+  url = "http://localhost:7070/search";
+} else if (filterMode === "pattern") {
+  url = "http://localhost:7070/search/pattern-search";
+} else {
+  url = "http://localhost:7070/search/simple-string-search";
+}
 
     fetch(url, {
       method: "POST",

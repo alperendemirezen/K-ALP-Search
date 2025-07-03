@@ -13,6 +13,13 @@ public class SearchRequest {
     private String requestId;
     private Long startOffset;
     private Long endOffset;
+    private String targetTopic;
+    private String filterMode;
+
+    private Integer partition;
+    private String date;
+    private String dateKey;
+
 
     // Getters & Setters
     public String getTopic() {
@@ -86,4 +93,36 @@ public class SearchRequest {
     public void setEndOffset(Long endOffset) {
         this.endOffset = endOffset;
     }
+
+    public String getTargetTopic() {
+        return targetTopic;
+    }
+
+    public void setTargetTopic(String targetTopic) {
+        this.targetTopic = targetTopic;
+    }
+
+    public String getFilterMode() {
+        return filterMode;
+    }
+    public void setFilterMode(String filterMode) {
+        this.filterMode = filterMode;
+    }
+    public Integer getPartition() {
+        return partition;
+    }
+    public void setPartition(Integer partition) {
+        this.partition = partition;
+    }
+
+    public String getDate() {
+        return date;
+    }
+
+    public void setDate(String date) {
+        this.date = date;
+    }
+
+    public String getDateKey() { return dateKey; }
+    public void setDateKey(String dateKey) { this.dateKey = dateKey; }
 }
