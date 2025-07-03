@@ -133,7 +133,7 @@ public class KafkaSearchController {
             if ("copy".equalsIgnoreCase(mode)) {
                 return copyMode(request);
             }
-            if ("firstByDate".equalsIgnoreCase(request.getMode())) {
+            if ("date".equalsIgnoreCase(request.getMode())) {
                 return DateMode(request);
             }
 
@@ -393,13 +393,12 @@ public class KafkaSearchController {
                         }
                     }
 
-                    fromOffset = batchStart; // Geriye git
+                    fromOffset = batchStart;
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-
         return List.of();
     }
 
@@ -714,9 +713,7 @@ public class KafkaSearchController {
                 consumer.seek(tp, mid);
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
 
-                // poll() birden fazla mesaj dönebilir, sadece mid offset'ini kontrol ediyoruz
-                Optional<ConsumerRecord<String, String>> midRecordOpt = records.records(tp)
-                        .stream()
+                Optional<ConsumerRecord<String, String>> midRecordOpt = records.records(tp).stream()
                         .filter(r -> r.offset() == mid)
                         .findFirst();
 
@@ -728,10 +725,19 @@ public class KafkaSearchController {
                 JsonNode json = objectMapper.readTree(record.value());
                 JsonNode dateNode = json.get(key);
 
-                if (dateNode != null && dateNode.asText().startsWith(expectedDatePrefix)) {
+                if (dateNode == null || dateNode.asText().length() < 8) {
+                    high = mid - 1;
+                    continue;
+                }
+
+                String recordDatePrefix = dateNode.asText().substring(0, 8);
+
+                int cmp = recordDatePrefix.compareTo(expectedDatePrefix);
+
+                if (cmp == 0) {
                     matchedOffset = mid;
                     high = mid - 1;
-                } else if (dateNode == null || dateNode.asText().compareTo(expectedDatePrefix) < 0) {
+                } else if (cmp < 0) {
                     low = mid + 1;
                 } else {
                     high = mid - 1;
@@ -748,7 +754,7 @@ public class KafkaSearchController {
                         result.put("offset", record.offset());
                         result.set("value", jsonNode);
                         results.add(result.toString());
-                        break; // sadece bir tane
+                        break;
                     }
                 }
             }

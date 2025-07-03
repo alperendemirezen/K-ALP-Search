@@ -248,11 +248,13 @@ window.onload = function () {
   document.getElementById("searchMode").addEventListener("change", function () {
     const mode = this.value;
 
-    // Container'ları sıfırla
+    // Önce tüm ekstra inputları gizle
+    document.getElementById("firstByDateContainer").style.display = "none";
     document.getElementById("lastNContainer").style.display = "none";
     document.getElementById("offsetRangeContainer").style.display = "none";
     document.getElementById("copyContainer").style.display = "none";
 
+    // Gerekli olan container'ı göster
     if (mode === "firstByDate") {
   document.getElementById("firstByDateContainer").style.display = "block";
   loadOffsets("unused", "unused", null, null, "firstByDatePartitions");
@@ -268,9 +270,9 @@ window.onload = function () {
     }
 
     if (mode === "copy") {
-  document.getElementById("copyContainer").style.display = "block";
-  loadOffsets("copyMinOffset", "copyMaxOffset", "copyStartOffset", "copyEndOffset");
-}
+      document.getElementById("copyContainer").style.display = "block";
+      loadOffsets("copyMinOffset", "copyMaxOffset", "copyStartOffset", "copyEndOffset");
+    }
 
     // Buton metni ayarı
     const searchButton = document.getElementById("searchButton");
@@ -282,7 +284,7 @@ window.onload = function () {
   });
 };
 
-function loadOffsets(minId, maxId, startInputId = null, endInputId = null) {
+function loadOffsets(minId, maxId, startInputId = null, endInputId = null, partitionElementId = null) {
   const topic = document.getElementById("topicSelect").value;
   const kafkaAddress = document.getElementById("kafkaAddress").value.trim();
   if (!topic || !kafkaAddress) return;
@@ -290,23 +292,29 @@ function loadOffsets(minId, maxId, startInputId = null, endInputId = null) {
   fetch(`http://localhost:7070/search/topic-offsets?topic=${topic}&kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
     .then(res => res.json())
     .then(data => {
-      document.getElementById(minId).textContent = data.startOffset;
-      document.getElementById(maxId).textContent = data.endOffset;
+      if (minId !== "unused") document.getElementById(minId).textContent = data.startOffset;
+      if (maxId !== "unused") document.getElementById(maxId).textContent = data.endOffset;
 
       if (startInputId && endInputId) {
         document.getElementById(startInputId).value = data.startOffset;
         document.getElementById(endInputId).value = data.endOffset;
       }
 
-      // BURASI EKLENDİ
-      if (data.partitions) {
+      if (partitionElementId && data.partitions) {
+        document.getElementById(partitionElementId).textContent = data.partitions.join(", ");
+      } else if (document.getElementById("partitionList") && data.partitions) {
         document.getElementById("partitionList").textContent = data.partitions.join(", ");
       }
     })
     .catch(() => {
-      document.getElementById(minId).textContent = "?";
-      document.getElementById(maxId).textContent = "?";
-      document.getElementById("partitionList").textContent = "N/A";
+      if (minId !== "unused") document.getElementById(minId).textContent = "?";
+      if (maxId !== "unused") document.getElementById(maxId).textContent = "?";
+
+      if (partitionElementId) {
+        document.getElementById(partitionElementId).textContent = "N/A";
+      } else if (document.getElementById("partitionList")) {
+        document.getElementById("partitionList").textContent = "N/A";
+      }
     });
 }
 
