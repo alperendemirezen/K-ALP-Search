@@ -138,6 +138,8 @@
             <input type="number" id="copyEndOffset" class="form-control" />
             <label for="partitionInput" class="form-label mt-2">Partition</label>
             <input type="number" id="partitionInput" class="form-control" value="0" min="0" />
+            <label for="targetKafka" class="form-label mt-2">Target Kafka Address (IP:PORT)</label>
+            <input type="text" id="targetKafka" class="form-control" placeholder="e.g., 192.168.1.100:9092" />
             <label for="targetTopic" class="form-label mt-2">Target Topic</label>
             <input type="text" id="targetTopic" class="form-control" placeholder="New or existing topic name" />
         </div>
@@ -218,12 +220,14 @@ function showFilterStep() {
   const mode = document.getElementById("searchMode").value;
 
   if (mode === "copy") {
-    const targetTopic = document.getElementById("targetTopic").value.trim();
-    if (!targetTopic) {
-      alert("Please enter a target topic name before continuing.");
-      return;
-    }
+  const targetTopic = document.getElementById("targetTopic").value.trim();
+  const targetKafka = document.getElementById("targetKafka").value.trim();
+
+  if (!targetKafka || !targetTopic) {
+    alert("Please enter both target Kafka address and target topic before continuing.");
+    return;
   }
+}
 
   // ŞU SATIRI EKLE!
   document.getElementById("filterModeContainer").style.display = "block";
@@ -399,9 +403,11 @@ if (mode === "date") {
 if (mode === "copy") {
   const copyStart = parseInt(document.getElementById("copyStartOffset").value || 0);
   const copyEnd = parseInt(document.getElementById("copyEndOffset").value || 0);
+  const targetKafka = document.getElementById("targetKafka").value.trim();
   const targetTopic = document.getElementById("targetTopic").value.trim();
   const partition = parseInt(document.getElementById("partitionInput").value || "0");
 
+  if (!targetKafka) return alert("Please enter a target Kafka address.");
   if (!targetTopic) return alert("Please enter a target topic name.");
   if (isNaN(copyStart) || isNaN(copyEnd) || copyStart < 0 || copyEnd < copyStart) {
     return alert("Please enter valid offset range.");
@@ -409,10 +415,10 @@ if (mode === "copy") {
 
   body.startOffset = copyStart;
   body.endOffset = copyEnd;
-  body.targetTopic = targetTopic;
   body.partition = partition;
-  body.filterMode = filterMode;  // BU SATIR ÖNEMLİ
-
+  body.targetKafka = targetKafka;
+  body.targetTopic = targetTopic;
+  body.filterMode = filterMode;
 }
 
 

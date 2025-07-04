@@ -19,7 +19,7 @@ public class SearchRequest {
     private Integer partition;
     private String date;
     private String dateKey;
-
+    private String targetKafka;
 
     // Getters & Setters
     public String getTopic() {
@@ -125,4 +125,11 @@ public class SearchRequest {
 
     public String getDateKey() { return dateKey; }
     public void setDateKey(String dateKey) { this.dateKey = dateKey; }
+    public String getTargetKafka() {
+        return targetKafka;
+    }
+
+    public void setTargetKafka(String targetKafka) {
+        this.targetKafka = targetKafka;
+    }
 }
