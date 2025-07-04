@@ -98,14 +98,14 @@
         <select id="searchMode" class="form-select">
             <option value="all">all</option>
             <option value="last">last</option>
-            <option value="firstByDate">date</option>
+            <option value="date">date</option>
             <option value="lastN">lastN</option>
-            <option value="offsetRange">manual</option>
+            <option value="manual">manual</option>
             <option value="copy">copy</option>
         </select>
 
-        <div id="firstByDateContainer" class="mt-2" style="display: none;">
-            <div><strong>Topic Partitions:</strong> <span id="firstByDatePartitions">Loading...</span></div>
+        <div id="dateContainer" class="mt-2" style="display: none;">
+            <div><strong>Topic Partitions:</strong> <span id="datePartitions">Loading...</span></div>
             <label for="dateKey" class="form-label mt-2">Date Field Key (e.g. date)</label>
             <input type="text" id="dateKey" class="form-control" placeholder="Key to check (e.g., date)" />
 
@@ -121,7 +121,7 @@
             <input type="number" id="lastNCount" class="form-control" min="1" />
         </div>
 
-        <div id="offsetRangeContainer" class="mt-2" style="display: none;">
+        <div id="manualContainer" class="mt-2" style="display: none;">
             <div><strong>Topic Offset Range:</strong> Min: <span id="minOffset">?</span>, Max: <span id="maxOffset">?</span></div>
             <label for="startOffset" class="form-label mt-2">Start Offset</label>
             <input type="number" id="startOffset" class="form-control" />
@@ -164,14 +164,11 @@
         <hr />
     </div>
 
-    <div class="section" id="filterStep" style="display: none;">
-        <label for="filterCount" class="form-label">How many filters?</label>
-        <input type="number" id="filterCount" class="form-control" min="0" value="0" />
-        <button onclick="generateFilters()" class="btn btn-primary mt-3">Create Filters</button>
-    </div>
-
     <!-- Filters -->
-    <div class="section" id="filtersContainer" style="display: none;"></div>
+    <div class="section" id="filtersContainer" style="display: none;">
+        <div id="dynamicFilters"></div>
+        <button class="btn btn-sm btn-outline-success mt-2" onclick="addFilter()">+ Add Filter</button>
+    </div>
 
     <!-- Final Submit -->
     <div id="finalSearch" class="mb-3" style="display: none;">
@@ -230,18 +227,28 @@ function showFilterStep() {
 
   // ŞU SATIRI EKLE!
   document.getElementById("filterModeContainer").style.display = "block";
-
-  document.getElementById("filterStep").style.display = "block";
+  onFilterModeChange();
 }
 function onFilterModeChange() {
   filterMode = document.querySelector('input[name="modeType"]:checked').value;
-  document.getElementById("filtersContainer").innerHTML = "";
-  document.getElementById("filterCount").value = 0;
-  document.getElementById("finalSearch").style.display = "none";
-  document.getElementById("filtersContainer").style.display = "none";
 
+  // Her değişiklikte temizle
+  const container = document.getElementById("dynamicFilters");
+  container.innerHTML = "";
+  filterIndex = 0;
 
+  // İlk inputu otomatik ekle
+  addFilter();
 
+  const addButton = document.querySelector('button[onclick="addFilter()"]');
+  if (filterMode === "pattern") {
+    addButton.style.display = "none";
+  } else {
+    addButton.style.display = "inline-block";
+  }
+
+  document.getElementById("filtersContainer").style.display = "block";
+  document.getElementById("finalSearch").style.display = "block";
 }
 
 window.onload = function () {
@@ -249,23 +256,23 @@ window.onload = function () {
     const mode = this.value;
 
     // Önce tüm ekstra inputları gizle
-    document.getElementById("firstByDateContainer").style.display = "none";
+    document.getElementById("dateContainer").style.display = "none";
     document.getElementById("lastNContainer").style.display = "none";
-    document.getElementById("offsetRangeContainer").style.display = "none";
+    document.getElementById("manualContainer").style.display = "none";
     document.getElementById("copyContainer").style.display = "none";
 
     // Gerekli olan container'ı göster
-    if (mode === "firstByDate") {
-  document.getElementById("firstByDateContainer").style.display = "block";
-  loadOffsets("unused", "unused", null, null, "firstByDatePartitions");
+    if (mode === "date") {
+  document.getElementById("dateContainer").style.display = "block";
+  loadOffsets("unused", "unused", null, null, "datePartitions");
 }
 
     if (mode === "lastN") {
       document.getElementById("lastNContainer").style.display = "block";
     }
 
-    if (mode === "offsetRange") {
-      document.getElementById("offsetRangeContainer").style.display = "block";
+    if (mode === "manual") {
+      document.getElementById("manualContainer").style.display = "block";
       loadOffsets("minOffset", "maxOffset");
     }
 
@@ -352,14 +359,13 @@ function generateFilters() {
   function searchKafka() {
     const topic = document.getElementById("topicSelect").value;
     const kafkaAddress = document.getElementById("kafkaAddress").value.trim();
-    const count = parseInt(document.getElementById("filterCount").value);
     const mode = document.getElementById("searchMode").value;
     const lastN = mode === "lastN" ? parseInt(document.getElementById("lastNCount").value || 0) : null;
-    const startOffset = mode === "offsetRange" ? parseInt(document.getElementById("startOffset").value || 0) : null;
-    const endOffset = mode === "offsetRange" ? parseInt(document.getElementById("endOffset").value || 0) : null;
+    const startOffset = mode === "manual" ? parseInt(document.getElementById("startOffset").value || 0) : null;
+    const endOffset = mode === "manual" ? parseInt(document.getElementById("endOffset").value || 0) : null;
     const id = `result_${++searchCount}`;
 
-    if (mode === "offsetRange") {
+    if (mode === "manual") {
       if (isNaN(startOffset) || isNaN(endOffset) || startOffset < 0 || endOffset < startOffset) {
         return alert("Lütfen geçerli bir offset aralığı giriniz.");
       }
@@ -367,14 +373,14 @@ function generateFilters() {
 
     let body = { topic, mode, lastN, kafkaAddress, requestId: id };
 
-// OffsetRange modu (manuel aralık)
-if (mode === "offsetRange") {
+// manual modu (manuel aralık)
+if (mode === "manual") {
   body.startOffset = startOffset;
   body.endOffset = endOffset;
   body.filterMode = filterMode;
 }
 
-if (mode === "firstByDate") {
+if (mode === "date") {
   const dateKey = document.getElementById("dateKey").value.trim();
   const targetDate = document.getElementById("targetDate").value.trim();
   const partition = parseInt(document.getElementById("partitionInputFirst").value);
@@ -411,23 +417,30 @@ if (mode === "copy") {
 
 
     if (filterMode === "json") {
-      let filters = {};
-      for (let i = 0; i < count; i++) {
-        const key = document.getElementById(`key_${i}`).value.trim();
-        const value = document.getElementById(`value_${i}`).value.trim();
-        if (!key || !value) return alert(`Eksik filtre ${i + 1}`);
-        filters[key] = value;
-      }
-      body.filters = filters;
-    } else {
-      const rawFilters = [];
-      for (let i = 0; i < count; i++) {
-        const raw = document.getElementById(`raw_${i}`).value.trim();
-        if (!raw) return alert(`Eksik string filtre ${i + 1}`);
-        rawFilters.push(raw);
-      }
-      body.rawFilters = rawFilters;
+  let filters = {};
+  for (let i = 0; i < filterIndex; i++) {
+    const keyInput = document.getElementById(`key_${i}`);
+    const valueInput = document.getElementById(`value_${i}`);
+    if (keyInput && valueInput) {
+      const key = keyInput.value.trim();
+      const value = valueInput.value.trim();
+      if (!key || !value) return alert(`Eksik filtre`);
+      filters[key] = value;
     }
+  }
+  body.filters = filters;
+} else {
+  const rawFilters = [];
+  for (let i = 0; i < filterIndex; i++) {
+    const input = document.getElementById(`raw_${i}`);
+    if (input) {
+      const value = input.value.trim();
+      if (!value) return alert(`Eksik string filtre`);
+      rawFilters.push(value);
+    }
+  }
+  body.rawFilters = rawFilters;
+}
 
     // Yeni AbortController oluştur
     const controller = new AbortController();
@@ -474,22 +487,36 @@ if (filterMode === "json") {
 
       box.innerHTML = "";
 
-      const summary = document.createElement("div");
-      summary.className = "filter-summary";
-      summary.innerHTML = `
-        <div><strong>Filter Type:</strong> ${filterMode === "json" ? "JSON" : "String"}</div>
-        <div><strong>Filters:</strong> ${
-          filterMode === "json"
-            ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
-            : body.rawFilters.join(", ")
-        }</div>
-        <div><strong>Mode:</strong> ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "offsetRange" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}</div>
-        <hr style="margin: 0.4rem 0;" />
-      `;
-      box.appendChild(summary);
+const summary = document.createElement("div");
+summary.className = "filter-summary";
+summary.innerHTML = `
+  <div><strong>Filter Type:</strong> ${filterMode === "json" ? "JSON" : "String"}</div>
+  <div><strong>Filters:</strong> ${
+    filterMode === "json"
+      ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
+      : body.rawFilters.join(", ")
+  }</div>
+  <div><strong>Mode:</strong> ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "manual" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}</div>
+  <hr style="margin: 0.4rem 0;" />
+`;
 
-      summary.style.position = "relative";
+summary.style.position = "relative";
 
+// Reverse buton
+const reverseBtn = document.createElement("button");
+reverseBtn.className = "btn btn-sm btn-outline-secondary me-2";
+reverseBtn.style.position = "absolute";
+reverseBtn.style.bottom = "2rem";
+reverseBtn.style.right = "0.4rem";
+reverseBtn.textContent = "↕ Reverse";
+reverseBtn.title = "Reverse result order";
+reverseBtn.onclick = () => {
+  const entries = Array.from(box.querySelectorAll(".record-entry"));
+  entries.reverse().forEach(entry => box.appendChild(entry));
+};
+summary.appendChild(reverseBtn);
+
+// Download buton
 const downloadBtn = document.createElement("button");
 downloadBtn.className = "btn btn-sm btn-outline-primary";
 downloadBtn.style.position = "absolute";
@@ -508,7 +535,7 @@ downloadBtn.onclick = () => {
     headerLines.push("Filters: " + body.rawFilters.join(", "));
   }
 
-  headerLines.push(`Mode: ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "offsetRange" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}`);
+  headerLines.push(`Mode: ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "manual" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}`);
 
   const resultsText = Array.from(box.querySelectorAll(".record-entry"))
     .map(div => div.textContent)
@@ -526,6 +553,7 @@ downloadBtn.onclick = () => {
 };
 
 summary.appendChild(downloadBtn);
+box.appendChild(summary);
 
       if (!data || data.length === 0) {
         box.innerHTML += "<em>No matching results.</em>";
@@ -585,6 +613,70 @@ summary.appendChild(downloadBtn);
       body: JSON.stringify({ requestId: id })
     });
   }
+
+  let filterIndex = 0;
+
+function addFilter(key = "", value = "") {
+  filterMode = document.querySelector('input[name="modeType"]:checked').value;
+
+  const container = document.getElementById("dynamicFilters");
+
+  // Pattern modundaysa zaten bir filtre varsa ikinciyi ekleme
+  if (filterMode === "pattern") {
+    const existing = document.querySelectorAll(`#dynamicFilters input[id^="raw_"]`);
+    if (existing.length >= 1) return;
+  }
+
+  const row = document.createElement("div");
+  row.className = "row g-2 mb-2 align-items-center";
+  row.id = `filterRow_${filterIndex}`;
+
+  if (filterMode === "json") {
+    row.innerHTML = `
+      <div class="col-md-5">
+        <input type="text" class="form-control" id="key_${filterIndex}" placeholder="Key" value="${key}">
+      </div>
+      <div class="col-md-5">
+        <input type="text" class="form-control" id="value_${filterIndex}" placeholder="Value" value="${value}">
+      </div>
+      <div class="col-md-2 text-end">
+        <button class="btn btn-sm btn-outline-danger" onclick="removeFilter(${filterIndex})">−</button>
+      </div>
+    `;
+  } else {
+    row.innerHTML = `
+      <div class="col-md-10">
+        <input type="text" class="form-control" id="raw_${filterIndex}" placeholder="${filterMode === 'pattern' ? 'Regex pattern' : 'String filter'}" value="${key}">
+      </div>
+      <div class="col-md-2 text-end">
+        <button class="btn btn-sm btn-outline-danger" onclick="removeFilter(${filterIndex})">−</button>
+      </div>
+    `;
+  }
+
+  container.appendChild(row);
+  filterIndex++;
+
+  // Eğer pattern modundaysa + butonunu gizle
+  if (filterMode === "pattern") {
+    document.querySelector('button[onclick="addFilter()"]').style.display = "none";
+  }
+}
+
+
+function removeFilter(index) {
+  const row = document.getElementById(`filterRow_${index}`);
+  if (row) {
+    row.remove();
+
+    // Eğer filterMode pattern ise tekrar + butonunu göster
+    if (filterMode === "pattern") {
+      document.querySelector('button[onclick="addFilter()"]').style.display = "inline-block";
+    }
+
+    filterIndex--; // Önemli: Silince index'i azalt
+  }
+}
 </script>
 
 </body>

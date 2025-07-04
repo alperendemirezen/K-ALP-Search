@@ -25,6 +25,7 @@ public class KafkaSearchController {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, List<Future<List<String>>>> activeRequests = new ConcurrentHashMap<>();
+    
 
     private Properties getKafkaProps(String bootstrapServers) {
         Properties props = new Properties();
@@ -97,6 +98,10 @@ public class KafkaSearchController {
         }
     }
 
+
+
+
+
     @PostMapping
     public List<String> JSONSearch(@RequestBody SearchRequest request) throws InterruptedException, ExecutionException {
         String topic = request.getTopic();
@@ -144,7 +149,7 @@ public class KafkaSearchController {
                 long end = endOffsets.get(tp);
                 if (end < start) continue;
 
-                if ("offsetRange".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                if ("manual".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
                     start = Math.max(start, request.getStartOffset());
                     end = Math.min(end, request.getEndOffset());
                 }
@@ -172,7 +177,6 @@ public class KafkaSearchController {
                 results.addAll(partial);
                 if (results.size() >= maxResults) break;
             }
-            Collections.reverse(results);
             executor.shutdownNow();
             return results.size() > maxResults ? results.subList(0, maxResults) : results;
         }
@@ -213,6 +217,9 @@ public class KafkaSearchController {
             if ("copy".equalsIgnoreCase(mode)) {
                 return copyMode(request);
             }
+            if ("date".equalsIgnoreCase(request.getMode())) {
+                return DateMode(request);
+            }
 
             consumer.assign(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
@@ -225,7 +232,7 @@ public class KafkaSearchController {
                 long end = endOffsets.get(tp);
                 if (end < start) continue;
 
-                if ("offsetRange".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                if ("manual".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
                     start = Math.max(start, request.getStartOffset());
                     end = Math.min(end, request.getEndOffset());
                 }
@@ -256,7 +263,6 @@ public class KafkaSearchController {
                 if (results.size() >= maxResults) break;
             }
             executor.shutdownNow();
-            Collections.reverse(results);
             return results.size() > maxResults ? results.subList(0, maxResults) : results;
         }
     }
@@ -296,6 +302,12 @@ public class KafkaSearchController {
             if ("last".equalsIgnoreCase(mode)) {
                 return searchLastRecordPattern(topic, partitions, props, patterns);
             }
+            if ("date".equalsIgnoreCase(request.getMode())) {
+                return DateMode(request);
+            }
+            if ("copy".equalsIgnoreCase(mode)) {
+                return copyMode(request);
+            }
 
             consumer.assign(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
@@ -308,7 +320,7 @@ public class KafkaSearchController {
                 long end = endOffsets.get(tp);
                 if (end < start) continue;
 
-                if ("offsetRange".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                if ("manual".equalsIgnoreCase(mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
                     start = Math.max(start, request.getStartOffset());
                     end = Math.min(end, request.getEndOffset());
                 }
@@ -338,7 +350,6 @@ public class KafkaSearchController {
                 if (results.size() >= maxResults) break;
             }
             executor.shutdownNow();
-            Collections.reverse(results);
             return results.size() > maxResults ? results.subList(0, maxResults) : results;
         }
     }
@@ -703,52 +714,53 @@ public class KafkaSearchController {
             consumer.assign(List.of(tp));
             consumer.seekToBeginning(List.of(tp));
             long low = consumer.position(tp);
+
             consumer.seekToEnd(List.of(tp));
             long high = consumer.position(tp) - 1;
 
-            long matchedOffset = -1;
+
+            long resultOffset = -1;
 
             while (low <= high) {
                 long mid = (low + high) / 2;
                 consumer.seek(tp, mid);
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
 
-                Optional<ConsumerRecord<String, String>> midRecordOpt = records.records(tp).stream()
+                Optional<ConsumerRecord<String, String>> recordOpt = records.records(tp).stream()
                         .filter(r -> r.offset() == mid)
                         .findFirst();
 
-                if (midRecordOpt.isEmpty()) {
-                    break;
+                if (recordOpt.isEmpty()) {
+                    low = mid + 1;
+                    continue;
                 }
 
-                ConsumerRecord<String, String> record = midRecordOpt.get();
+                ConsumerRecord<String, String> record = recordOpt.get();
                 JsonNode json = objectMapper.readTree(record.value());
                 JsonNode dateNode = json.get(key);
-
                 if (dateNode == null || dateNode.asText().length() < 8) {
                     high = mid - 1;
                     continue;
                 }
 
-                String recordDatePrefix = dateNode.asText().substring(0, 8);
+                String datePrefix = dateNode.asText().substring(0, 8);
+                int cmp = datePrefix.compareTo(expectedDatePrefix);
 
-                int cmp = recordDatePrefix.compareTo(expectedDatePrefix);
-
-                if (cmp == 0) {
-                    matchedOffset = mid;
-                    high = mid - 1;
-                } else if (cmp < 0) {
+                if (cmp < 0) {
                     low = mid + 1;
                 } else {
+                    if (cmp == 0) {
+                        resultOffset = mid;
+                    }
                     high = mid - 1;
                 }
             }
 
-            if (matchedOffset != -1) {
-                consumer.seek(tp, matchedOffset);
+            if (resultOffset != -1) {
+                consumer.seek(tp, resultOffset);
                 ConsumerRecords<String, String> finalRecords = consumer.poll(Duration.ofMillis(500));
                 for (ConsumerRecord<String, String> record : finalRecords.records(tp)) {
-                    if (record.offset() == matchedOffset) {
+                    if (record.offset() == resultOffset) {
                         JsonNode jsonNode = objectMapper.readTree(record.value());
                         ObjectNode result = objectMapper.createObjectNode();
                         result.put("offset", record.offset());
@@ -758,6 +770,7 @@ public class KafkaSearchController {
                     }
                 }
             }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
