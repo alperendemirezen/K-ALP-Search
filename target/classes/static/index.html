@@ -5,72 +5,92 @@
     <title>Kafka Search UI</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <style>
-    body {
-      background-color: #f8f9fa;
-      padding: 2rem;
-    }
-    .section {
-      margin-bottom: 2rem;
-      padding: 2rem;
-      border-radius: 8px;
-      background: white;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
-    }
-    .close-x {
-      position: absolute;
-      top: 2px;
-      right: 6px;
-      font-size: 14px;
-      color: #666;
-      cursor: pointer;
-      line-height: 1;
-      padding: 0;
-    }
-    .close-x:hover {
-      color: #c00;
-    }
-    .record-entry {
-      background-color: #ffffff;
-      border: 1px solid #aaa;
-      padding: 1rem;
-      margin-top: 0.5rem;
-      border-radius: 4px;
-    }
-    .filter-summary {
-      font-size: 0.85rem;
-      color: #555;
-      margin-bottom: 0.2rem;
-      line-height: 1.2;
-    }
-    .result-tab {
-      display: inline-block;
-      margin-right: 1rem;
-      padding: 0.5rem 1rem;
-      background-color: #e2e6ea;
-      border-radius: 5px;
-      cursor: pointer;
-      position: relative;
-      user-select: none;
-    }
-    .result-tab.active {
-      background-color: #cce5ff;
-    }
-    .result-box {
-      background-color: #f1f1f1;
-      border: 1px solid #ccc;
-      padding: 1rem;
-      margin-top: 1rem;
-      border-radius: 6px;
-      font-family: monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .spinner-border-sm {
-      position: absolute;
-      right: 8px;
-      top: 8px;
-    }
-  </style>
+  body {
+    background-color: #f0f2f5;
+    padding: 2rem;
+    font-family: "Segoe UI", sans-serif;
+  }
+  .section {
+    background: #ffffff;
+    border-radius: 1rem;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  }
+  .form-control, .form-select {
+    border-radius: 0.6rem;
+  }
+  .btn-primary {
+    background: linear-gradient(to right, #4e73df, #1cc88a);
+    border: none;
+    font-weight: 500;
+  }
+  .btn-success {
+    background-color: #1cc88a;
+    border: none;
+    font-weight: 500;
+  }
+  .btn-outline-success {
+    border-color: #1cc88a;
+    color: #1cc88a;
+  }
+  .btn-outline-success:hover {
+    background-color: #1cc88a;
+    color: white;
+  }
+  .result-tab {
+    display: inline-block;
+    margin: 0 0.5rem 0.5rem 0;
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    background: #e2e6ea;
+    color: #333;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    position: relative;
+  }
+  .result-tab.active {
+    background-color: #5a5c69;
+    color: white;
+  }
+  .close-x {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #c82333;
+    color: white;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    width: 20px;
+    height: 20px;
+    text-align: center;
+    line-height: 20px;
+    cursor: pointer;
+  }
+  .record-entry {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    padding: 1rem;
+    margin-top: 0.5rem;
+    border-radius: 0.6rem;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .filter-summary {
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 0.4rem;
+    position: relative;
+    padding-right: 8rem;
+  }
+  .btn-sm {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.4rem;
+  }
+</style>
 </head>
 <body>
 <div class="container">
@@ -86,10 +106,9 @@
     <!-- Topic Selection -->
     <div class="section" id="topicSection" style="display: none;">
         <label for="topicSelect" class="form-label">Kafka Topic</label>
-        <select id="topicSelect" class="form-select">
+        <select id="topicSelect" class="form-select" onchange="topicSelected()">
             <option disabled selected value="">Select a topic</option>
         </select>
-        <button onclick="nextStep()" class="btn btn-primary mt-3">Next</button>
     </div>
 
     <!-- Mode Selection -->
@@ -211,9 +230,13 @@ function loadTopics() {
     .catch(() => alert("Failed to load topics."));
 }
 
-function nextStep() {
-  if (!document.getElementById("topicSelect").value) return alert("Please select a topic.");
+function topicSelected() {
+  const topic = document.getElementById("topicSelect").value;
+  if (!topic) return;
+
   document.getElementById("searchOptions").style.display = "block";
+  document.getElementById("filterModeContainer").style.display = "block";
+  onFilterModeChange(); // filtreleri de eklesin
 }
 
 function showFilterStep() {
@@ -526,7 +549,7 @@ summary.appendChild(reverseBtn);
 const downloadBtn = document.createElement("button");
 downloadBtn.className = "btn btn-sm btn-outline-primary";
 downloadBtn.style.position = "absolute";
-downloadBtn.style.top = "0.2rem";
+downloadBtn.style.top = "-5rem";
 downloadBtn.style.right = "0.5rem";
 downloadBtn.title = "Download results";
 downloadBtn.innerHTML = "⬇ Download";
