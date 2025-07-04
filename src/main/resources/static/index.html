@@ -162,8 +162,6 @@
             <label for="targetTopic" class="form-label mt-2">Target Topic</label>
             <input type="text" id="targetTopic" class="form-control" placeholder="New or existing topic name" />
         </div>
-
-        <button onclick="showFilterStep()" class="btn btn-primary mt-3">Continue</button>
     </div>
 
     <!-- Filter Mode + Filter Step -->
@@ -236,7 +234,7 @@ function topicSelected() {
 
   document.getElementById("searchOptions").style.display = "block";
   document.getElementById("filterModeContainer").style.display = "block";
-  onFilterModeChange(); // filtreleri de eklesin
+  onFilterModeChange();
 }
 
 function showFilterStep() {
@@ -252,19 +250,19 @@ function showFilterStep() {
   }
 }
 
-  // ŞU SATIRI EKLE!
+
   document.getElementById("filterModeContainer").style.display = "block";
   onFilterModeChange();
 }
 function onFilterModeChange() {
   filterMode = document.querySelector('input[name="modeType"]:checked').value;
 
-  // Her değişiklikte temizle
+
   const container = document.getElementById("dynamicFilters");
   container.innerHTML = "";
   filterIndex = 0;
 
-  // İlk inputu otomatik ekle
+
   addFilter();
 
   const addButton = document.querySelector('button[onclick="addFilter()"]');
@@ -282,13 +280,13 @@ window.onload = function () {
   document.getElementById("searchMode").addEventListener("change", function () {
     const mode = this.value;
 
-    // Önce tüm ekstra inputları gizle
+
     document.getElementById("dateContainer").style.display = "none";
     document.getElementById("lastNContainer").style.display = "none";
     document.getElementById("manualContainer").style.display = "none";
     document.getElementById("copyContainer").style.display = "none";
 
-    // Gerekli olan container'ı göster
+
     if (mode === "date") {
   document.getElementById("dateContainer").style.display = "block";
   loadOffsets("unused", "unused", null, null, "datePartitions");
@@ -400,7 +398,7 @@ function generateFilters() {
 
     let body = { topic, mode, lastN, kafkaAddress, requestId: id };
 
-// manual modu (manuel aralık)
+
 if (mode === "manual") {
   body.startOffset = startOffset;
   body.endOffset = endOffset;
@@ -471,11 +469,11 @@ if (mode === "copy") {
   body.rawFilters = rawFilters;
 }
 
-    // Yeni AbortController oluştur
+
     const controller = new AbortController();
     abortControllers[id] = controller;
 
-    // Yeni tab ve result box oluştur
+
     const tab = document.createElement("div");
     tab.className = "result-tab";
     tab.id = id + "_tab";
@@ -531,7 +529,7 @@ summary.innerHTML = `
 
 summary.style.position = "relative";
 
-// Reverse buton
+
 const reverseBtn = document.createElement("button");
 reverseBtn.className = "btn btn-sm btn-outline-secondary me-2";
 reverseBtn.style.position = "absolute";
@@ -545,7 +543,7 @@ reverseBtn.onclick = () => {
 };
 summary.appendChild(reverseBtn);
 
-// Download buton
+
 const downloadBtn = document.createElement("button");
 downloadBtn.className = "btn btn-sm btn-outline-primary";
 downloadBtn.style.position = "absolute";
@@ -650,7 +648,7 @@ function addFilter(key = "", value = "") {
 
   const container = document.getElementById("dynamicFilters");
 
-  // Pattern modundaysa zaten bir filtre varsa ikinciyi ekleme
+
   if (filterMode === "pattern") {
     const existing = document.querySelectorAll(`#dynamicFilters input[id^="raw_"]`);
     if (existing.length >= 1) return;
@@ -686,7 +684,7 @@ function addFilter(key = "", value = "") {
   container.appendChild(row);
   filterIndex++;
 
-  // Eğer pattern modundaysa + butonunu gizle
+
   if (filterMode === "pattern") {
     document.querySelector('button[onclick="addFilter()"]').style.display = "none";
   }
@@ -698,12 +696,12 @@ function removeFilter(index) {
   if (row) {
     row.remove();
 
-    // Eğer filterMode pattern ise tekrar + butonunu göster
+
     if (filterMode === "pattern") {
       document.querySelector('button[onclick="addFilter()"]').style.display = "inline-block";
     }
 
-    filterIndex--; // Önemli: Silince index'i azalt
+    filterIndex--;
   }
 }
 </script>
