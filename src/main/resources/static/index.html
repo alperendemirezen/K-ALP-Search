@@ -5,196 +5,218 @@
     <title>Kafka Search UI</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <style>
-  body {
-    background-color: #f0f2f5;
-    padding: 2rem;
-    font-family: "Segoe UI", sans-serif;
-  }
-  .section {
-    background: #ffffff;
-    border-radius: 1rem;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-  }
-  .form-control, .form-select {
-    border-radius: 0.6rem;
-  }
-  .btn-primary {
-    background: linear-gradient(to right, #4e73df, #1cc88a);
-    border: none;
-    font-weight: 500;
-  }
-  .btn-success {
-    background-color: #1cc88a;
-    border: none;
-    font-weight: 500;
-  }
-  .btn-outline-success {
-    border-color: #1cc88a;
-    color: #1cc88a;
-  }
-  .btn-outline-success:hover {
-    background-color: #1cc88a;
-    color: white;
-  }
-  .result-tab {
-    display: inline-block;
-    margin: 0 0.5rem 0.5rem 0;
-    padding: 0.4rem 1rem;
-    border-radius: 20px;
-    background: #e2e6ea;
-    color: #333;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.3s ease;
-    position: relative;
-  }
-  .result-tab.active {
-    background-color: #5a5c69;
-    color: white;
-  }
-  .close-x {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    background: #c82333;
-    color: white;
-    border-radius: 50%;
-    font-size: 0.8rem;
-    width: 20px;
-    height: 20px;
-    text-align: center;
-    line-height: 20px;
-    cursor: pointer;
-  }
-  .record-entry {
-    background-color: #ffffff;
-    border: 1px solid #dee2e6;
-    padding: 1rem;
-    margin-top: 0.5rem;
-    border-radius: 0.6rem;
-    font-family: monospace;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .filter-summary {
-    font-size: 0.9rem;
-    color: #555;
-    margin-bottom: 0.4rem;
-    position: relative;
-    padding-right: 8rem;
-  }
-  .btn-sm {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.4rem;
-  }
-</style>
+    body {
+      background-color: #f0f2f5;
+      padding: 2rem;
+      font-family: "Segoe UI", sans-serif;
+    }
+    .section {
+      background: #ffffff;
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    .form-control, .form-select {
+      border-radius: 0.6rem;
+    }
+    .btn-primary {
+      background: linear-gradient(to right, #4e73df, #1cc88a);
+      border: none;
+      font-weight: 500;
+    }
+    .btn-success {
+      background-color: #1cc88a;
+      border: none;
+      font-weight: 500;
+    }
+    .layout-split {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .left-pane, .right-pane {
+      flex: 1 1 400px;
+      min-width: 300px;
+    }
+    #filtersContainer {
+      margin-top: 1rem;
+    }
+    .vertical-divider {
+  width: 1px;
+  background-color: #ccc;
+  margin: 0 0.5rem;
+}
+#modExplanation {
+  background-color: #fefefe;
+  border-left: 4px solid #1cc88a;
+  padding: 1.2rem;
+  font-size: 0.95rem;
+}
+.result-tab {
+  display: inline-block;
+  margin: 0 0.5rem 0.5rem 0;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  background: #e2e6ea;
+  color: #333;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  position: relative;
+}
+
+.result-tab.active {
+  background-color: #5a5c69;
+  color: white;
+}
+
+.close-x {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #c82333;
+  color: white;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  width: 20px;
+  height: 20px;
+  text-align: center;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.record-entry {
+  background-color: #ffffff;
+  border: 1px solid #dee2e6;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  border-radius: 0.6rem;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.filter-summary {
+  font-size: 0.9rem;
+  color: #555;
+  margin-bottom: 0.4rem;
+  position: relative;
+  padding-right: 8rem;
+}
+  </style>
 </head>
 <body>
 <div class="container">
     <h1 class="mb-4">🔎 K-Search</h1>
 
-    <!-- Kafka Address -->
-    <div class="section">
-        <label for="kafkaAddress" class="form-label">Kafka Address (IP:PORT)</label>
-        <input type="text" id="kafkaAddress" class="form-control" placeholder="e.g., 127.0.0.1:9092" />
-        <button onclick="loadTopics()" class="btn btn-primary mt-2">Load Topics</button>
+    <div class="layout-split">
+        <!-- LEFT SIDE -->
+        <div class="left-pane">
+            <div class="section">
+                <label for="kafkaAddress" class="form-label">Kafka Address (IP:PORT)</label>
+                <input type="text" id="kafkaAddress" class="form-control" placeholder="e.g., 127.0.0.1:9092">
+                <button onclick="loadTopics()" class="btn btn-primary mt-2">Load Topics</button>
+            </div>
+
+            <div class="section" id="topicSection" style="display: none;">
+                <label for="topicSelect" class="form-label">Kafka Topic</label>
+                <select id="topicSelect" class="form-select" onchange="topicSelected()">
+                    <option disabled selected value="">Select a topic</option>
+                </select>
+            </div>
+
+            <div class="section" id="searchOptions" style="display: none;">
+                <label for="searchMode" class="form-label">Mode</label>
+                <select id="searchMode" class="form-select">
+                    <option value="all">all</option>
+                    <option value="last">last</option>
+                    <option value="date">date</option>
+                    <option value="lastN">lastN</option>
+                    <option value="manual">manual</option>
+                    <option value="copy">copy</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="vertical-divider"></div>
+        <!-- RIGHT SIDE -->
+        <div class="right-pane">
+            <div id="modExplanation" class="section text-muted" style="display: none;">
+                <strong>Mode Explanation:</strong>
+                <p id="modExplanationText">Seçilen mod hakkında bilgi burada görünecek.</p>
+            </div>
+            <div id="rightInfoMessage" class="section text-muted text-center">
+                <p><em>The input fields for the selected mode will be displayed here.</em></p>
+            </div>
+            <div id="dateContainer" class="section" style="display: none;">
+                <div><strong>Topic Partitions:</strong> <span id="datePartitions">Loading...</span></div>
+                <label for="dateKey" class="form-label mt-2">Date Field Key (e.g. date)</label>
+                <input type="text" id="dateKey" class="form-control" placeholder="Key to check (e.g., date)">
+
+                <label for="targetDate" class="form-label mt-2">Target Date</label>
+                <input type="text" id="targetDate" class="form-control" placeholder="Format: YYYYMMDD">
+
+                <label for="partitionInputFirst" class="form-label mt-2">Partition</label>
+                <input type="number" id="partitionInputFirst" class="form-control" value="0" min="0">
+            </div>
+
+            <div id="lastNContainer" class="section" style="display: none;">
+                <label for="lastNCount" class="form-label">How many messages back do you want to scan?</label>
+                <input type="number" id="lastNCount" class="form-control" min="1">
+            </div>
+
+            <div id="manualContainer" class="section" style="display: none;">
+                <div><strong>Offset Range:</strong> Min: <span id="minOffset">?</span>, Max: <span id="maxOffset">?</span></div>
+                <label for="startOffset" class="form-label mt-2">Start Offset</label>
+                <input type="number" id="startOffset" class="form-control">
+                <label for="endOffset" class="form-label mt-2">End Offset</label>
+                <input type="number" id="endOffset" class="form-control">
+            </div>
+
+            <div id="copyContainer" class="section" style="display: none;">
+                <div><strong>Offset Range:</strong> Min: <span id="copyMinOffset">?</span>, Max: <span id="copyMaxOffset">?</span></div>
+                <div><strong>Partitions:</strong> <span id="partitionList">Loading...</span></div>
+                <label for="copyStartOffset" class="form-label mt-2">Start Offset</label>
+                <input type="number" id="copyStartOffset" class="form-control">
+                <label for="copyEndOffset" class="form-label mt-2">End Offset</label>
+                <input type="number" id="copyEndOffset" class="form-control">
+                <label for="partitionInput" class="form-label mt-2">Partition</label>
+                <input type="number" id="partitionInput" class="form-control" value="0" min="0">
+                <label for="targetKafka" class="form-label mt-2">Target Kafka Address</label>
+                <input type="text" id="targetKafka" class="form-control">
+                <label for="targetTopic" class="form-label mt-2">Target Topic</label>
+                <input type="text" id="targetTopic" class="form-control">
+            </div>
+        </div>
     </div>
 
-    <!-- Topic Selection -->
-    <div class="section" id="topicSection" style="display: none;">
-        <label for="topicSelect" class="form-label">Kafka Topic</label>
-        <select id="topicSelect" class="form-select" onchange="topicSelected()">
-            <option disabled selected value="">Select a topic</option>
-        </select>
-    </div>
-
-    <!-- Mode Selection -->
-    <div class="section" id="searchOptions" style="display: none;">
-        <label for="searchMode" class="form-label">Mode</label>
-        <select id="searchMode" class="form-select">
-            <option value="all">all</option>
-            <option value="last">last</option>
-            <option value="date">date</option>
-            <option value="lastN">lastN</option>
-            <option value="manual">manual</option>
-            <option value="copy">copy</option>
-        </select>
-
-        <div id="dateContainer" class="mt-2" style="display: none;">
-            <div><strong>Topic Partitions:</strong> <span id="datePartitions">Loading...</span></div>
-            <label for="dateKey" class="form-label mt-2">Date Field Key (e.g. date)</label>
-            <input type="text" id="dateKey" class="form-control" placeholder="Key to check (e.g., date)" />
-
-            <label for="targetDate" class="form-label mt-2">Target Date</label>
-            <input type="text" id="targetDate" class="form-control" placeholder="Format: YYYYMMDD" />
-
-            <label for="partitionInputFirst" class="form-label mt-2">Partition</label>
-            <input type="number" id="partitionInputFirst" class="form-control" value="0" min="0" />
-        </div>
-
-        <div id="lastNContainer" class="mt-2" style="display: none;">
-            <label for="lastNCount" class="form-label">How many messages back? (e.g., 1000000)</label>
-            <input type="number" id="lastNCount" class="form-control" min="1" />
-        </div>
-
-        <div id="manualContainer" class="mt-2" style="display: none;">
-            <div><strong>Topic Offset Range:</strong> Min: <span id="minOffset">?</span>, Max: <span id="maxOffset">?</span></div>
-            <label for="startOffset" class="form-label mt-2">Start Offset</label>
-            <input type="number" id="startOffset" class="form-control" />
-            <label for="endOffset" class="form-label mt-2">End Offset</label>
-            <input type="number" id="endOffset" class="form-control" />
-        </div>
-
-        <div id="copyContainer" class="mt-2" style="display: none;">
-            <div><strong>Topic Offset Range:</strong> Min: <span id="copyMinOffset">?</span>, Max: <span id="copyMaxOffset">?</span></div>
-            <div><strong>Topic Partitions:</strong> <span id="partitionList">Loading...</span></div>
-            <label for="copyStartOffset" class="form-label mt-2">Start Offset</label>
-            <input type="number" id="copyStartOffset" class="form-control" />
-            <label for="copyEndOffset" class="form-label mt-2">End Offset</label>
-            <input type="number" id="copyEndOffset" class="form-control" />
-            <label for="partitionInput" class="form-label mt-2">Partition</label>
-            <input type="number" id="partitionInput" class="form-control" value="0" min="0" />
-            <label for="targetKafka" class="form-label mt-2">Target Kafka Address (IP:PORT)</label>
-            <input type="text" id="targetKafka" class="form-control" placeholder="e.g., 192.168.1.100:9092" />
-            <label for="targetTopic" class="form-label mt-2">Target Topic</label>
-            <input type="text" id="targetTopic" class="form-control" placeholder="New or existing topic name" />
-        </div>
-    </div>
-
-    <!-- Filter Mode + Filter Step -->
-    <div id="filterModeContainer" style="display: none;">
+    <!-- Filter Section (full-width) -->
+    <div class="section" id="filterModeContainer" style="display: none;">
         <label>Filter Mode:</label>
         <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="modeType" id="stringMode" value="string" checked onchange="onFilterModeChange()" />
+            <input class="form-check-input" type="radio" name="modeType" id="stringMode" value="string" checked onchange="onFilterModeChange()">
             <label class="form-check-label" for="stringMode">String</label>
         </div>
         <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="modeType" id="jsonMode" value="json" onchange="onFilterModeChange()" />
+            <input class="form-check-input" type="radio" name="modeType" id="jsonMode" value="json" onchange="onFilterModeChange()">
             <label class="form-check-label" for="jsonMode">JSON</label>
         </div>
         <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="modeType" id="patternMode" value="pattern" onchange="onFilterModeChange()" />
+            <input class="form-check-input" type="radio" name="modeType" id="patternMode" value="pattern" onchange="onFilterModeChange()">
             <label class="form-check-label" for="patternMode">Pattern</label>
         </div>
-
-        <hr />
     </div>
 
-    <!-- Filters -->
     <div class="section" id="filtersContainer" style="display: none;">
         <div id="dynamicFilters"></div>
         <button class="btn btn-sm btn-outline-success mt-2" onclick="addFilter()">+ Add Filter</button>
     </div>
 
-    <!-- Final Submit -->
     <div id="finalSearch" class="mb-3" style="display: none;">
         <button id="searchButton" onclick="searchKafka()" class="btn btn-success">Search Kafka</button>
     </div>
 
-    <!-- Results -->
     <div class="section">
         <h5>Results:</h5>
         <div id="resultTabs"></div>
@@ -203,6 +225,15 @@
 </div>
 
 <script>
+
+const modeExplanations = {
+  all: "Scans all records based on the applied filters.",
+  last: "Retrieves the latest record that matches the given filters.",
+  lastN: "Scans the last X records from the end offset, where X is user-defined.",
+  date: "Retrieves the first record matching the specified date.",
+  manual: "Scans all records between the specified start and end offsets.",
+copy: "Copies filtered records to another Kafka topic."};
+
   let searchCount = 0;
 let activeTabId = null;
 const abortControllers = {};
@@ -215,8 +246,10 @@ function loadTopics() {
   fetch(`http://localhost:7070/search/topics?kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
     .then(res => res.json())
     .then(data => {
+    data.sort((a, b) => a.localeCompare(b));
       const select = document.getElementById("topicSelect");
       select.innerHTML = '<option disabled selected value="">Select a topic</option>';
+
       data.forEach(topic => {
         const option = document.createElement("option");
         option.value = topic;
@@ -234,6 +267,9 @@ function topicSelected() {
 
   document.getElementById("searchOptions").style.display = "block";
   document.getElementById("filterModeContainer").style.display = "block";
+    document.getElementById("rightInfoMessage").style.display = "none";
+    const mode = document.getElementById("searchMode").value;
+  updateModExplanation(mode);
   onFilterModeChange();
 }
 
@@ -278,7 +314,10 @@ function onFilterModeChange() {
 
 window.onload = function () {
   document.getElementById("searchMode").addEventListener("change", function () {
+  document.getElementById("rightInfoMessage").style.display = "none";
     const mode = this.value;
+updateModExplanation(mode);
+
 
 
     document.getElementById("dateContainer").style.display = "none";
@@ -313,6 +352,7 @@ window.onload = function () {
     } else {
       searchButton.textContent = "Search";
     }
+
   });
 };
 
@@ -704,6 +744,19 @@ function removeFilter(index) {
     filterIndex--;
   }
 }
+function updateModExplanation(mode) {
+  const explanationBox = document.getElementById("modExplanation");
+  const explanationText = document.getElementById("modExplanationText");
+
+  if (modeExplanations[mode]) {
+    explanationBox.style.display = "block";
+    explanationText.textContent = modeExplanations[mode];
+  } else {
+    explanationBox.style.display = "none";
+  }
+}
+
+
 </script>
 
 </body>
