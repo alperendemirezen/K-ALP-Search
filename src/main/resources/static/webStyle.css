@@ -1,0 +1,137 @@
+body {
+      background-color: #f0f2f5;
+      padding: 2rem;
+      font-family: "Segoe UI", sans-serif;
+    }
+    .section {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 0.9rem 1.4rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+    .form-control, .form-select {
+      border-radius: 0.6rem;
+    }
+    .btn-primary {
+      background: linear-gradient(to right, #4e73df, #1cc88a);
+      border: none;
+      font-weight: 500;
+    }
+    .btn-success {
+      background-color: #1cc88a;
+      border: none;
+      font-weight: 500;
+    }
+    .layout-split {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .left-pane, .right-pane {
+      flex: 1 1 400px;
+      min-width: 300px;
+    }
+    #filtersContainer {
+      margin-top: 1rem;
+    }
+    .vertical-divider {
+  width: 1px;
+  background-color: #ccc;
+  margin: 0 0.5rem;
+}
+#modExplanation {
+  background-color: #fefefe;
+  border-left: 4px solid #1cc88a;
+  padding: 1.2rem;
+  font-size: 0.95rem;
+}
+.result-tab {
+  display: inline-block;
+  margin: 0 0.5rem 0.5rem 0;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  background: #e2e6ea;
+  color: #333;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  position: relative;
+}
+
+.result-tab.active {
+  background-color: #5a5c69;
+  color: white;
+}
+
+.close-x {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #c82333;
+  color: white;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  width: 20px;
+  height: 20px;
+  text-align: center;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.record-entry {
+  background-color: #ffffff;
+  border: 1px solid #dee2e6;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  border-radius: 0.6rem;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.filter-summary {
+  font-size: 0.9rem;
+  color: #555;
+  margin-bottom: 0.4rem;
+  position: relative;
+  padding-right: 8rem;
+}
+
+.autocomplete-box {
+  position: absolute;
+  background-color: #ffffff;
+  border-radius: 0.5rem;
+  margin-top: 0.25rem;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+   width: inherit;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 0.95rem;
+}
+
+.autocomplete-box div {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.autocomplete-box div:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-box div:hover {
+  background-color: #4e73df;
+  color: white;
+}
+.record-entry {
+  font-size: 0.85rem;
+}
+#loadTopicsBtn {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border-radius: 0.375rem;
+}

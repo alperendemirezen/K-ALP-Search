@@ -46,6 +46,7 @@ public class KafkaSearchController {
         props.put("auto.offset.reset", "earliest");
         return props;
     }
+
     private Properties getKafkaProps(String bootstrapServers, int pollRecords) {
         Properties props = new Properties();
         props.put("bootstrap.servers", bootstrapServers);
@@ -75,6 +76,7 @@ public class KafkaSearchController {
             return Collections.emptyList();
         }
     }
+
     @GetMapping("/topic-offsets")
     public Map<String, Object> getOffsetsAndPartitions(@RequestParam("kafkaAddress") String kafkaAddress, @RequestParam("topic") String topic) {
         Properties props = getKafkaProps(kafkaAddress);
@@ -500,7 +502,6 @@ public class KafkaSearchController {
     }
 
 
-
     private List<String> consumePartitionRangeJSON(String topic, int partition, long startOffset, long endOffset,
                                                    Properties props, Map<String, String> filters, int maxResults) {
         List<String> foundRecords = new ArrayList<>();
@@ -609,6 +610,7 @@ public class KafkaSearchController {
             return false;
         }
     }
+
     private boolean matchesFiltersString(String value, List<String> rawFilters) {
         if (rawFilters == null || rawFilters.isEmpty()) return true;
         if (value == null) return false;
@@ -620,6 +622,7 @@ public class KafkaSearchController {
         }
         return true;
     }
+
     private boolean matchesPatterns(String value, List<Pattern> patterns) {
         if (value == null || patterns == null || patterns.isEmpty()) return true;
         for (Pattern pattern : patterns) {
@@ -769,7 +772,6 @@ public class KafkaSearchController {
 
         return results;
     }
-
 
 
 }
