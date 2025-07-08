@@ -133,6 +133,15 @@
   background-color: #4e73df;
   color: white;
 }
+.record-entry {
+  font-size: 0.85rem;
+}
+#loadTopicsBtn {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border-radius: 0.375rem;
+}
 </style>
 </head>
 <body>
@@ -145,7 +154,7 @@
             <div class="section">
                 <label for="kafkaAddress" class="form-label">Kafka Address (IP:PORT)</label>
                 <input type="text" id="kafkaAddress" class="form-control" placeholder="e.g., 127.0.0.1:9092">
-                <button onclick="loadTopics()" class="btn btn-success mt-2">Load Topics</button>
+                <button id="loadTopicsBtn" onclick="loadTopics()" class="btn btn-success mt-2">Load Topics</button>
             </div>
 
             <div class="section" id="topicSection" style="display: none;">
