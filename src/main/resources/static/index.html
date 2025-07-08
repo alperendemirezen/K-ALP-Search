@@ -13,7 +13,7 @@
     .section {
   background: #ffffff;
   border-radius: 1rem;
-  padding: 1rem 1.5rem; /* üst-alt 1rem, sağ-sol 1.5rem */
+  padding: 0.9rem 1.4rem;
   margin-bottom: 1.25rem;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
@@ -145,6 +145,23 @@
 </style>
 </head>
 <body>
+
+<button id="settingsBtn" class="btn btn-outline-secondary" style="position: fixed; top: 1.2rem; right: 1.2rem; z-index: 1100;" onclick="toggleSettingsPanel()">
+    ⚙️
+</button>
+
+<!-- Side Panel -->
+<div id="settingsPanel" style="position: fixed; top: 0; right: -300px; width: 280px; height: 100%; background: #fff; border-left: 1px solid #ccc; box-shadow: -2px 0 5px rgba(0,0,0,0.1); transition: right 0.3s ease; z-index: 1099; padding: 1rem;">
+    <h5>🔧 Settings</h5>
+    <label class="form-label mt-3">Threads (recommended: 4)</label>
+    <input type="number" id="threadCount" class="form-control" min="1" value="4">
+
+    <label class="form-label mt-3">Poll Records (max: 5000)</label>
+    <input type="number" id="pollRecords" class="form-control" min="1" value="500">
+
+    <button class="btn btn-sm btn-success mt-3" onclick="saveSettings()">Apply</button>
+</div>
+
 <div class="container">
     <h1 class="mb-4">🔎 K-Search</h1>
 
@@ -346,6 +363,10 @@ function onFilterModeChange() {
 }
 
 window.onload = function () {
+
+  document.getElementById("threadCount").value = userSettings.threads;
+  document.getElementById("pollRecords").value = userSettings.pollRecords;
+
   document.getElementById("searchMode").addEventListener("change", function () {
   document.getElementById("rightInfoMessage").style.display = "none";
     const mode = this.value;
@@ -470,6 +491,8 @@ function generateFilters() {
     }
 
     let body = { topic, mode, lastN, kafkaAddress, requestId: id };
+    body.threads = userSettings.threads;
+body.pollRecords = userSettings.pollRecords;
 
 
 if (mode === "manual") {
@@ -590,15 +613,23 @@ if (filterMode === "json") {
 const summary = document.createElement("div");
 summary.className = "filter-summary";
 summary.innerHTML = `
-  <div><strong>Filter Type:</strong> ${filterMode === "json" ? "JSON" : "String"}</div>
+<div><strong>Filter Type:</strong> ${
+  filterMode === "json"
+    ? "JSON"
+    : filterMode === "pattern"
+    ? "Pattern"
+    : "String"
+}</div>
   <div><strong>Filters:</strong> ${
     filterMode === "json"
       ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
       : body.rawFilters.join(", ")
   }</div>
   <div><strong>Mode:</strong> ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "manual" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}</div>
+  <div><strong>Results Found:</strong> ${data.length}</div>
   <hr style="margin: 0.4rem 0;" />
 `;
+
 
 summary.style.position = "relative";
 
@@ -846,6 +877,28 @@ function showAllTopics() {
   });
 }
 
+let userSettings = {
+  threads: 4,
+  pollRecords: 500
+};
+
+// Paneli aç/kapat
+function toggleSettingsPanel() {
+  const panel = document.getElementById("settingsPanel");
+  panel.style.right = panel.style.right === "0px" ? "-320px" : "0px";
+}
+
+// Kaydet butonuna basıldığında çağrılır
+function saveSettings() {
+  const threads = parseInt(document.getElementById("threadCount").value);
+  const records = parseInt(document.getElementById("pollRecords").value);
+
+  if (threads > 0) userSettings.threads = threads;
+  if (records > 0 && records <= 5000) userSettings.pollRecords = records;
+
+  alert(`Ayarlar kaydedildi:\nThreads: ${userSettings.threads}\nPoll Records: ${userSettings.pollRecords}`);
+  toggleSettingsPanel();
+}
 </script>
 
 </body>

@@ -20,6 +20,8 @@ public class SearchRequest {
     private String date;
     private String dateKey;
     private String targetKafka;
+    private int threads;
+    private int pollRecords;
 
     // Getters & Setters
     public String getTopic() {
@@ -132,4 +134,23 @@ public class SearchRequest {
     public void setTargetKafka(String targetKafka) {
         this.targetKafka = targetKafka;
     }
+
+    public int getThreads() {
+        return threads;
+    }
+
+    public void setThreads(int threads) {
+        this.threads = threads;
+    }
+
+    public int getPollRecords() {
+        return pollRecords;
+    }
+
+    public void setPollRecords(int pollRecords) {
+        this.pollRecords = pollRecords;
+    }
+
 }
+
+
