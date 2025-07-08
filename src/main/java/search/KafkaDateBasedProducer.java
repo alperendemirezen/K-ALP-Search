@@ -31,7 +31,7 @@ public class KafkaDateBasedProducer {
         LocalDate startDate = LocalDate.of(2025, 7, 1);
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-        int recordsPerDayPerPartition = 5000; // her gün, her partition'da 5K veri
+        int recordsPerDayPerPartition = 5000;
 
         for (int partition = 0; partition < partitionCount; partition++) {
             for (int dayOffset = 0; dayOffset < 5; dayOffset++) {

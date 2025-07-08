@@ -6,7 +6,7 @@ import java.util.Map;
 public class SearchRequest {
     private String topic;
     private Map<String, String> filters;
-    private List<String> rawFilters; // <- String bazlı filtreler
+    private List<String> rawFilters;
     private String mode;
     private Integer lastN;
     private String kafkaAddress;

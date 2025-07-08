@@ -55,7 +55,7 @@ public class KafkaSearchController {
     }
 
     @GetMapping("/topics")
-    public List<String> getAllTopics(@RequestParam String kafkaAddress) {
+    public List<String> getAllTopics(@RequestParam("kafkaAddress") String kafkaAddress) {
         Properties props = getKafkaProps(kafkaAddress);
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             return new ArrayList<>(consumer.listTopics().keySet());
@@ -65,7 +65,7 @@ public class KafkaSearchController {
         }
     }
     @GetMapping("/topic-offsets")
-    public Map<String, Object> getOffsetsAndPartitions(@RequestParam String kafkaAddress, @RequestParam String topic) {
+    public Map<String, Object> getOffsetsAndPartitions(@RequestParam("kafkaAddress") String kafkaAddress, @RequestParam("topic") String topic) {
         Properties props = getKafkaProps(kafkaAddress);
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             List<PartitionInfo> partitions = consumer.partitionsFor(topic);
@@ -345,7 +345,7 @@ public class KafkaSearchController {
                     consumer.assign(Collections.singletonList(tp));
                     consumer.seek(tp, batchStart);
 
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
@@ -403,7 +403,7 @@ public class KafkaSearchController {
                     consumer.assign(Collections.singletonList(tp));
                     consumer.seek(tp, batchStart);
 
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
@@ -452,7 +452,7 @@ public class KafkaSearchController {
                     consumer.assign(Collections.singletonList(tp));
                     consumer.seek(tp, batchStart);
 
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
@@ -494,7 +494,7 @@ public class KafkaSearchController {
             long currentOffset = startOffset;
 
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
@@ -530,7 +530,7 @@ public class KafkaSearchController {
             long currentOffset = startOffset;
 
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
@@ -556,7 +556,7 @@ public class KafkaSearchController {
 
             long currentOffset = startOffset;
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
@@ -635,7 +635,7 @@ public class KafkaSearchController {
 
             boolean done = false;
             while (!done) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                 for (ConsumerRecord<String, String> record : records) {
                     if (record.offset() > endOffset) {
                         done = true;
@@ -694,7 +694,7 @@ public class KafkaSearchController {
             while (low <= high) {
                 long mid = (low + high) / 2;
                 consumer.seek(tp, mid);
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
 
                 Optional<ConsumerRecord<String, String>> recordOpt = records.records(tp).stream()
                         .filter(r -> r.offset() == mid)
@@ -728,7 +728,7 @@ public class KafkaSearchController {
 
             if (resultOffset != -1) {
                 consumer.seek(tp, resultOffset);
-                ConsumerRecords<String, String> finalRecords = consumer.poll(Duration.ofMillis(500));
+                ConsumerRecords<String, String> finalRecords = consumer.poll(Duration.ofMillis(5000));
                 for (ConsumerRecord<String, String> record : finalRecords.records(tp)) {
                     if (record.offset() == resultOffset) {
                         JsonNode jsonNode = objectMapper.readTree(record.value());

@@ -11,12 +11,12 @@
       font-family: "Segoe UI", sans-serif;
     }
     .section {
-      background: #ffffff;
-      border-radius: 1rem;
-      padding: 2rem;
-      margin-bottom: 2rem;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-    }
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1rem 1.5rem; /* üst-alt 1rem, sağ-sol 1.5rem */
+  margin-bottom: 1.25rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
     .form-control, .form-select {
       border-radius: 0.6rem;
     }
@@ -104,7 +104,36 @@
   position: relative;
   padding-right: 8rem;
 }
-  </style>
+
+.autocomplete-box {
+  position: absolute;
+  background-color: #ffffff;
+  border-radius: 0.5rem;
+  margin-top: 0.25rem;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+   width: inherit;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 0.95rem;
+}
+
+.autocomplete-box div {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.autocomplete-box div:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-box div:hover {
+  background-color: #4e73df;
+  color: white;
+}
+</style>
 </head>
 <body>
 <div class="container">
@@ -116,14 +145,14 @@
             <div class="section">
                 <label for="kafkaAddress" class="form-label">Kafka Address (IP:PORT)</label>
                 <input type="text" id="kafkaAddress" class="form-control" placeholder="e.g., 127.0.0.1:9092">
-                <button onclick="loadTopics()" class="btn btn-primary mt-2">Load Topics</button>
+                <button onclick="loadTopics()" class="btn btn-success mt-2">Load Topics</button>
             </div>
 
             <div class="section" id="topicSection" style="display: none;">
                 <label for="topicSelect" class="form-label">Kafka Topic</label>
-                <select id="topicSelect" class="form-select" onchange="topicSelected()">
-                    <option disabled selected value="">Select a topic</option>
-                </select>
+                <input type="text" id="topicSelect" class="form-control" placeholder="Search or select topic..."
+                       oninput="filterTopics()" onfocus="showAllTopics()" autocomplete="off">
+                <div id="autocompleteBox" class="autocomplete-box"></div>
             </div>
 
             <div class="section" id="searchOptions" style="display: none;">
@@ -192,23 +221,24 @@
     </div>
 
     <!-- Filter Section (full-width) -->
-    <div class="section" id="filterModeContainer" style="display: none;">
-        <label>Filter Mode:</label>
-        <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="modeType" id="stringMode" value="string" checked onchange="onFilterModeChange()">
-            <label class="form-check-label" for="stringMode">String</label>
-        </div>
-        <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="modeType" id="jsonMode" value="json" onchange="onFilterModeChange()">
-            <label class="form-check-label" for="jsonMode">JSON</label>
-        </div>
-        <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="modeType" id="patternMode" value="pattern" onchange="onFilterModeChange()">
-            <label class="form-check-label" for="patternMode">Pattern</label>
-        </div>
-    </div>
+
 
     <div class="section" id="filtersContainer" style="display: none;">
+        <div id="filterModeContainer" class="mb-2 d-flex align-items-center flex-wrap small">
+            <label class="me-2 mb-1"><strong>Filter Mode:</strong></label>
+            <div class="form-check form-check-inline mb-1">
+                <input class="form-check-input" type="radio" name="modeType" id="stringMode" value="string" checked onchange="onFilterModeChange()">
+                <label class="form-check-label" for="stringMode">String</label>
+            </div>
+            <div class="form-check form-check-inline mb-1">
+                <input class="form-check-input" type="radio" name="modeType" id="jsonMode" value="json" onchange="onFilterModeChange()">
+                <label class="form-check-label" for="jsonMode">JSON</label>
+            </div>
+            <div class="form-check form-check-inline mb-1">
+                <input class="form-check-input" type="radio" name="modeType" id="patternMode" value="pattern" onchange="onFilterModeChange()">
+                <label class="form-check-label" for="patternMode">Pattern</label>
+            </div>
+        </div>
         <div id="dynamicFilters"></div>
         <button class="btn btn-sm btn-outline-success mt-2" onclick="addFilter()">+ Add Filter</button>
     </div>
@@ -223,6 +253,8 @@
         <div id="resultBoxes"></div>
     </div>
 </div>
+
+
 
 <script>
 
@@ -246,29 +278,21 @@ function loadTopics() {
   fetch(`http://localhost:7070/search/topics?kafkaAddress=${encodeURIComponent(kafkaAddress)}`)
     .then(res => res.json())
     .then(data => {
-    data.sort((a, b) => a.localeCompare(b));
-      const select = document.getElementById("topicSelect");
-      select.innerHTML = '<option disabled selected value="">Select a topic</option>';
+      allTopics = data.sort((a, b) => a.localeCompare(b)); // sadece autocomplete için dizi
 
-      data.forEach(topic => {
-        const option = document.createElement("option");
-        option.value = topic;
-        option.textContent = topic;
-        select.appendChild(option);
-      });
       document.getElementById("topicSection").style.display = "block";
     })
     .catch(() => alert("Failed to load topics."));
 }
 
 function topicSelected() {
-  const topic = document.getElementById("topicSelect").value;
+  const topic = document.getElementById("topicSelect").value.trim();
   if (!topic) return;
 
   document.getElementById("searchOptions").style.display = "block";
   document.getElementById("filterModeContainer").style.display = "block";
-    document.getElementById("rightInfoMessage").style.display = "none";
-    const mode = document.getElementById("searchMode").value;
+  document.getElementById("rightInfoMessage").style.display = "none";
+  const mode = document.getElementById("searchMode").value;
   updateModExplanation(mode);
   onFilterModeChange();
 }
@@ -756,6 +780,62 @@ function updateModExplanation(mode) {
   }
 }
 
+let allTopics = []; // autocomplete için global
+
+function filterTopics() {
+  const input = document.getElementById("topicSelect").value.trim().toLowerCase();
+  const box = document.getElementById("autocompleteBox");
+  box.innerHTML = "";
+
+  if (!input) {
+  allTopics.forEach(topic => {
+    const div = document.createElement("div");
+    div.textContent = topic;
+    div.onclick = () => {
+      document.getElementById("topicSelect").value = topic;
+      box.innerHTML = "";
+      topicSelected();
+    };
+    box.appendChild(div);
+  });
+  return;
+}
+
+  const matches = allTopics.filter(topic => topic.toLowerCase().includes(input));
+  matches.forEach(topic => {
+    const div = document.createElement("div");
+    div.textContent = topic;
+    div.onclick = () => {
+      document.getElementById("topicSelect").value = topic;
+      box.innerHTML = "";
+      topicSelected(); // senin mevcut fonksiyonun
+    };
+    box.appendChild(div);
+  });
+}
+
+// Otomatik kapansın: dışa tıklama
+document.addEventListener("click", function (e) {
+  if (!e.target.closest("#topicSelect") && !e.target.closest("#autocompleteBox")) {
+    document.getElementById("autocompleteBox").innerHTML = "";
+  }
+});
+
+function showAllTopics() {
+  const box = document.getElementById("autocompleteBox");
+  box.innerHTML = "";
+
+  allTopics.forEach(topic => {
+    const div = document.createElement("div");
+    div.textContent = topic;
+    div.onclick = () => {
+      document.getElementById("topicSelect").value = topic;
+      box.innerHTML = "";
+      topicSelected();
+    };
+    box.appendChild(div);
+  });
+}
 
 </script>
 
