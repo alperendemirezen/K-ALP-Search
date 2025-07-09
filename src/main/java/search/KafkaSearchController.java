@@ -12,7 +12,6 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.web.bind.annotation.*;
 
-import java.sql.SQLOutput;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,16 +23,6 @@ import java.util.regex.Pattern;
 @RequestMapping("/search")
 public class KafkaSearchController {
 
-    public static class Range {
-        public long start;
-        public long end;
-
-        public Range(long start, long end) {
-            this.start = start;
-            this.end = end;
-        }
-    }
-
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, List<Future<List<String>>>> activeRequests = new ConcurrentHashMap<>();
 
@@ -44,6 +33,7 @@ public class KafkaSearchController {
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("auto.offset.reset", "earliest");
+        props.put("max.poll.records", 500);
         return props;
     }
 
@@ -367,7 +357,6 @@ public class KafkaSearchController {
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
-                        System.out.println(records.count());
                         if (record.offset() >= end) continue;
                         if (matchesFiltersJSON(record.value(), filters)) {
                             matchedRecords.add(record);
@@ -425,7 +414,6 @@ public class KafkaSearchController {
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
-                        System.out.println(records.count());
                         if (record.offset() >= end) continue;
                         if (matchesFiltersString(record.value(), rawFilters)) {
                             matchedRecords.add(record);
@@ -475,7 +463,6 @@ public class KafkaSearchController {
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
-                        System.out.println(records.count());
                         if (record.offset() >= end) continue;
 
                         if (matchesPatterns(record.value(), patterns)) {
@@ -509,7 +496,6 @@ public class KafkaSearchController {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
             consumer.seek(tp, startOffset);
-            System.out.println(Thread.currentThread().getName());
 
             long currentOffset = startOffset;
 
@@ -518,7 +504,6 @@ public class KafkaSearchController {
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
-                    System.out.println(records.count());
                     if (record.offset() > endOffset) break;
                     if (matchesFiltersJSON(record.value(), filters)) {
                         try {
@@ -547,7 +532,6 @@ public class KafkaSearchController {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
             consumer.seek(tp, startOffset);
-            System.out.println(Thread.currentThread().getName());
             long currentOffset = startOffset;
 
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
@@ -555,7 +539,6 @@ public class KafkaSearchController {
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
-                    System.out.println(records.count());
                     if (record.offset() > endOffset) break;
                     if (matchesFiltersString(record.value(), rawFilters)) {
                         foundRecords.add(String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
@@ -575,14 +558,12 @@ public class KafkaSearchController {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
             consumer.seek(tp, startOffset);
-            System.out.println(Thread.currentThread().getName());
             long currentOffset = startOffset;
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
-                    System.out.println(records.count());
                     if (record.offset() > endOffset) break;
                     if (matchesPatterns(record.value(), patterns)) {
                         foundRecords.add(String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
