@@ -22,8 +22,9 @@ public class SearchRequest {
     private String targetKafka;
     private int threads;
     private int pollRecords;
+    private int timeoutMs;
 
-    // Getters & Setters
+
     public String getTopic() {
         return topic;
     }
@@ -149,6 +150,14 @@ public class SearchRequest {
 
     public void setPollRecords(int pollRecords) {
         this.pollRecords = pollRecords;
+    }
+
+    public int getTimeoutMs() {
+        return timeoutMs;
+    }
+
+    public void setTimeoutMs(int timeoutMs) {
+        this.timeoutMs = timeoutMs;
     }
 
 }

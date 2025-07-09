@@ -34,10 +34,14 @@ public class KafkaSearchController {
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("auto.offset.reset", "earliest");
         props.put("max.poll.records", 500);
+        props.put("request.timeout.ms", "30000");
+        props.put("session.timeout.ms", "30000");
+        props.put("default.api.timeout.ms", "30000");
+        props.put("max.poll.interval.ms", "300000");
         return props;
     }
 
-    private Properties getKafkaProps(String bootstrapServers, int pollRecords) {
+    private Properties getKafkaProps(String bootstrapServers, int pollRecords, int timeoutMs) {
         Properties props = new Properties();
         props.put("bootstrap.servers", bootstrapServers);
         props.put("group.id", "web-search-group");
@@ -45,6 +49,10 @@ public class KafkaSearchController {
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("auto.offset.reset", "earliest");
         props.put("max.poll.records", String.valueOf(pollRecords));
+        props.put("request.timeout.ms", String.valueOf(timeoutMs));
+        props.put("session.timeout.ms", String.valueOf(timeoutMs));
+        props.put("default.api.timeout.ms", String.valueOf(timeoutMs));
+        props.put("max.poll.interval.ms", String.valueOf(timeoutMs));
         return props;
     }
 
@@ -128,7 +136,8 @@ public class KafkaSearchController {
         activeRequests.put(ctx.requestId, ctx.futures);
 
         int safePollRecords = request.getPollRecords() > 0 ? request.getPollRecords() : 500;
-        ctx.props = getKafkaProps(request.getKafkaAddress(), safePollRecords);
+        int safeTimeoutMs = request.getTimeoutMs() > 0 ? request.getTimeoutMs() : 5000;
+        ctx.props = getKafkaProps(request.getKafkaAddress(), safePollRecords, safeTimeoutMs);
         ctx.consumer = new KafkaConsumer<>(ctx.props);
 
         List<PartitionInfo> partitionInfos = ctx.consumer.partitionsFor(ctx.topic);
@@ -145,6 +154,12 @@ public class KafkaSearchController {
         ctx.consumer.assign(ctx.partitions);
         ctx.beginningOffsets = ctx.consumer.beginningOffsets(ctx.partitions);
         ctx.endOffsets = ctx.consumer.endOffsets(ctx.partitions);
+
+        System.out.println("[DEBUG] [DEBUG] [DEBUG] [DEBUG] [DEBUG] [DEBUG] [DEBUG] ");
+        System.out.println("  request.timeout.ms       = " + ctx.props.getProperty("request.timeout.ms"));
+        System.out.println("  session.timeout.ms       = " + ctx.props.getProperty("session.timeout.ms"));
+        System.out.println("  default.api.timeout.ms   = " + ctx.props.getProperty("default.api.timeout.ms"));
+        System.out.println("  max.poll.interval.ms     = " + ctx.props.getProperty("max.poll.interval.ms"));
 
         return ctx;
     }
@@ -500,7 +515,9 @@ public class KafkaSearchController {
             long currentOffset = startOffset;
 
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(
+                        props.containsKey("timeout.ms") ? Long.parseLong(props.getProperty("timeout.ms")) : 5000
+                ));
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
@@ -535,7 +552,9 @@ public class KafkaSearchController {
             long currentOffset = startOffset;
 
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(
+                        props.containsKey("timeout.ms") ? Long.parseLong(props.getProperty("timeout.ms")) : 5000
+                ));
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
@@ -560,7 +579,9 @@ public class KafkaSearchController {
             consumer.seek(tp, startOffset);
             long currentOffset = startOffset;
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(
+                        props.containsKey("timeout.ms") ? Long.parseLong(props.getProperty("timeout.ms")) : 5000
+                ));
                 if (records.isEmpty()) break;
 
                 for (ConsumerRecord<String, String> record : records) {
@@ -641,7 +662,9 @@ public class KafkaSearchController {
 
             boolean done = false;
             while (!done) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(
+                        props.containsKey("timeout.ms") ? Long.parseLong(props.getProperty("timeout.ms")) : 5000
+                ));
                 for (ConsumerRecord<String, String> record : records) {
                     if (record.offset() > endOffset) {
                         done = true;
@@ -700,7 +723,9 @@ public class KafkaSearchController {
             while (low <= high) {
                 long mid = (low + high) / 2;
                 consumer.seek(tp, mid);
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(
+                        props.containsKey("timeout.ms") ? Long.parseLong(props.getProperty("timeout.ms")) : 5000
+                ));
 
                 Optional<ConsumerRecord<String, String>> recordOpt = records.records(tp).stream()
                         .filter(r -> r.offset() == mid)
@@ -734,7 +759,9 @@ public class KafkaSearchController {
 
             if (resultOffset != -1) {
                 consumer.seek(tp, resultOffset);
-                ConsumerRecords<String, String> finalRecords = consumer.poll(Duration.ofMillis(5000));
+                ConsumerRecords<String, String> finalRecords = consumer.poll(Duration.ofMillis(
+                        props.containsKey("timeout.ms") ? Long.parseLong(props.getProperty("timeout.ms")) : 5000
+                ));
                 for (ConsumerRecord<String, String> record : finalRecords.records(tp)) {
                     if (record.offset() == resultOffset) {
                         JsonNode jsonNode = objectMapper.readTree(record.value());

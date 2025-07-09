@@ -25,6 +25,9 @@
     <label class="form-label mt-3">Poll Records (max: 5000)</label>
     <input type="number" id="pollRecords" class="form-control" min="1" value="500">
 
+    <label class="form-label mt-3">Kafka Timeout (ms)</label>
+    <input type="number" id="timeoutInput" class="form-control" min="1000" step="1000" placeholder="30000">
+
     <button class="btn btn-sm btn-success mt-3" onclick="saveSettings()">Apply</button>
 </div>
 

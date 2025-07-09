@@ -83,6 +83,7 @@ window.onload = function () {
 
     document.getElementById("threadCount").value = userSettings.threads;
     document.getElementById("pollRecords").value = userSettings.pollRecords;
+    document.getElementById("timeoutInput").value = userSettings.timeoutMs;
 
     document.getElementById("searchMode").addEventListener("change", function () {
         document.getElementById("rightInfoMessage").style.display = "none";
@@ -210,6 +211,7 @@ function searchKafka(filterMode, filterIndex) {
     let body = { topic, mode, lastN, kafkaAddress, requestId: id };
     body.threads = userSettings.threads;
     body.pollRecords = userSettings.pollRecords;
+    body.timeoutMs = userSettings.timeoutMs;
 
 
     if (mode === "manual") {
@@ -593,7 +595,8 @@ function showAllTopics() {
 
 let userSettings = {
     threads: 4,
-    pollRecords: 500
+    pollRecords: 500,
+    timeoutMs: 30000
 };
 
 function toggleSettingsPanel() {
@@ -604,6 +607,7 @@ function toggleSettingsPanel() {
 function saveSettings() {
     const threads = parseInt(document.getElementById("threadCount").value);
     const records = parseInt(document.getElementById("pollRecords").value);
+    const timeout = parseInt(document.getElementById("timeoutInput").value);
 
     if (isNaN(threads) || threads <= 0) {
         alert("Please enter a valid thread count (must be > 0)");
@@ -615,9 +619,15 @@ function saveSettings() {
         return;
     }
 
+    if (isNaN(timeout) || timeout < 1000 || timeout % 1000 !== 0) {
+        alert("Please enter a timeout of at least 1000 ms, in multiples of 1000.");
+        return;
+    }
+
     userSettings.threads = threads;
     userSettings.pollRecords = records;
+    userSettings.timeoutMs = timeout;
 
-    alert(`Settings saved:\nThreads: ${threads}\nPoll Records: ${records}`);
+    alert(`Settings saved:\nThreads: ${threads}\nPoll Records: ${records}\nTimeout: ${timeout} ms`);
     toggleSettingsPanel();
 }
