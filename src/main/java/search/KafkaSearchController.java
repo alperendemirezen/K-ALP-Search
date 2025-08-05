@@ -941,108 +941,116 @@ public class KafkaSearchController {
         String key = request.getDateKey();
         String expectedDatePrefix = request.getDate();
 
+        System.out.println("[DateMode] Starting date-based binary search in topic=" + topic + ", partition=" + partition);
+        System.out.println("[DateMode] Searching for key='" + key + "' with date prefix='" + expectedDatePrefix + "'");
+
         Properties props = getKafkaProps(kafkaAddress);
+        List<String> results = new ArrayList<>();
+        long resultOffset = -1;
 
-        while (true) {
-            List<String> results = new ArrayList<>();
+        while (resultOffset == -1) {
 
-            try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-                TopicPartition tp = new TopicPartition(topic, partition);
-                consumer.assign(List.of(tp));
-                consumer.seekToEnd(List.of(tp));
-                long endOffset = consumer.position(tp);
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            TopicPartition tp = new TopicPartition(topic, partition);
+            consumer.assign(List.of(tp));
+            consumer.seekToBeginning(List.of(tp));
+            long low = consumer.position(tp);
 
-                if (endOffset == 0) {
-                    System.out.println("[DateMode] Partition is empty. Waiting for data...");
-                    Thread.sleep(5000);
+            consumer.seekToEnd(List.of(tp));
+            long high = consumer.position(tp) - 1;
+
+            System.out.println("[DateMode] Offset range: [" + low + " - " + high + "]");
+
+
+
+            while (low <= high) {
+                long mid = (low + high) / 2;
+                consumer.seek(tp, mid);
+
+                long pollTimeout = props.containsKey("request.timeout.ms")
+                        ? Long.parseLong(props.getProperty("request.timeout.ms"))
+                        : 60000;
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
+                Optional<ConsumerRecord<String, String>> recordOpt = records.records(tp).stream()
+                        .filter(r -> r.offset() == mid)
+                        .findFirst();
+
+                if (recordOpt.isEmpty()) {
+                    System.out.println("[DateMode] No record at offset " + mid + ". Moving right.");
+                    low = mid + 1;
                     continue;
                 }
 
-                consumer.seekToBeginning(List.of(tp));
-                Thread.sleep(100);
-                long low = consumer.position(tp);
+                ConsumerRecord<String, String> record = recordOpt.get();
+                JsonNode json = objectMapper.readTree(record.value());
+                JsonNode dateNode = json.get(key);
 
-                consumer.seekToEnd(List.of(tp));
-                long high = consumer.position(tp) - 1;
-
-                long resultOffset = -1;
-
-                while (low <= high) {
-                    long mid = (low + high) / 2;
-                    consumer.seek(tp, mid);
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(60000));
-
-                    Optional<ConsumerRecord<String, String>> recordOpt = records.records(tp).stream()
-                            .filter(r -> r.offset() == mid)
-                            .findFirst();
-
-                    if (recordOpt.isEmpty()) {
-                        low = mid + 1;
-                        continue;
-                    }
-
-                    ConsumerRecord<String, String> record = recordOpt.get();
-                    JsonNode json = objectMapper.readTree(record.value());
-                    JsonNode dateNode = json.get(key);
-
-                    if (dateNode == null || dateNode.asText().length() < 14) {
-                        high = mid - 1;
-                        continue;
-                    }
-
-                    String datePrefix = dateNode.asText().substring(0, 14);
-                    int cmp = datePrefix.compareTo(expectedDatePrefix);
-
-                    if (cmp < 0) {
-                        low = mid + 1;
-                    } else {
-                        if (cmp == 0) {
-                            resultOffset = mid;
-                        }
-                        high = mid - 1;
-                    }
+                if (dateNode == null || dateNode.asText().length() < 14) {
+                    System.out.println("[DateMode] Invalid or missing full timestamp at offset " + mid + ". Skipping.");
+                    high = mid - 1;
+                    continue;
                 }
 
-                if (resultOffset != -1) {
-                    consumer.seek(tp, resultOffset);
-                    int fetchedCount = 0;
-                    long maxOffset = resultOffset + 100;
+                String datePrefix = dateNode.asText().substring(0, 14);
+                int cmp = datePrefix.compareTo(expectedDatePrefix);
 
-                    while (fetchedCount < 100) {
-                        ConsumerRecords<String, String> fetchedRecords = consumer.poll(Duration.ofMillis(5000));
-                        if (fetchedRecords.isEmpty()) {
+                System.out.println("[DateMode] Offset " + mid + " has date prefix '" + datePrefix + "', compareTo=" + cmp);
+
+                if (cmp < 0) {
+                    low = mid + 1;
+                } else {
+                    if (cmp == 0) {
+                        resultOffset = mid;
+                        System.out.println("[DateMode] Match found at offset " + mid);
+                    }
+                    high = mid - 1;
+                }
+            }
+
+
+            if (resultOffset != -1) {
+                consumer.seek(tp, resultOffset);
+                int fetchedCount = 0;
+                long maxOffset = resultOffset + 100;
+
+                while (fetchedCount < 100) {
+                    ConsumerRecords<String, String> fetchedRecords = consumer.poll(Duration.ofMillis(5000));
+                    if (fetchedRecords.isEmpty()) {
+                        break;
+                    }
+
+                    for (ConsumerRecord<String, String> record : fetchedRecords.records(tp)) {
+                        if (record.offset() >= maxOffset) {
                             break;
                         }
 
-                        for (ConsumerRecord<String, String> record : fetchedRecords.records(tp)) {
-                            if (record.offset() >= maxOffset) break;
+                        JsonNode jsonNode = objectMapper.readTree(record.value());
+                        ObjectNode result = objectMapper.createObjectNode();
+                        result.put("offset", record.offset());
+                        result.set("value", jsonNode);
+                        results.add(result.toString());
+                        fetchedCount++;
 
-                            JsonNode jsonNode = objectMapper.readTree(record.value());
-                            ObjectNode result = objectMapper.createObjectNode();
-                            result.put("offset", record.offset());
-                            result.set("value", jsonNode);
-                            results.add(result.toString());
-                            fetchedCount++;
-
-                            if (fetchedCount >= 100) break;
-                        }
+                        if (fetchedCount >= 100) break;
                     }
-
-                    System.out.println("[DateMode] Match found, returning results.");
-                    return results;
-                } else {
-                    System.out.println("[DateMode] No match yet. Retrying in 5 seconds...");
-                    Thread.sleep(5000);
                 }
 
-            } catch (Exception e) {
-                System.out.println("[DateMode] Error: " + e.getMessage());
-                e.printStackTrace();
-                return List.of();
+                System.out.println("[DateMode] Retrieved " + results.size() + " records starting from offset " + resultOffset);
+            } else {
+                System.out.println("[DateMode] No matching record found for given date prefix.");
             }
-        }
-    }
 
+        } catch (Exception e) {
+            System.out.println("[DateMode] Error occurred: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+
+        return results;
+    }
+        System.out.println("[DateMode] Search complete. Matches: " + results.size());
+        return results;
+    }
 
 
 
