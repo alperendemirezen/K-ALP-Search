@@ -222,7 +222,7 @@ function searchKafka(filterMode, filterIndex) {
         const partition = parseInt(document.getElementById("partitionInputFirst").value);
 
         if (!dateKey || !targetDate || isNaN(partition)) {
-            return alert("Please provide date key, date (YYYYMMDD), and partition.");
+            return alert("Please provide date key, date (YYYYMMDDhhmmss), and partition.");
         }
 
         body.dateKey = dateKey;
