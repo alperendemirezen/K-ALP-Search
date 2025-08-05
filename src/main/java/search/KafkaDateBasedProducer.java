@@ -4,17 +4,26 @@ import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.serialization.StringSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class KafkaDateBasedProducer {
-    private static final String[] cities = {"Istanbul", "Ankara", "Izmir", "Bursa", "Antalya"};
-    private static final String[] statuses = {"dolu", "boş", "bakımda"};
+    private static final String[] cities = {
+            "Istanbul", "Ankara", "Izmir", "Bursa", "Antalya",
+            "Konya", "Adana", "Gaziantep", "Mersin", "Kayseri",
+            "Samsun", "Eskişehir", "Trabzon", "Diyarbakır", "Erzurum",
+            "Van", "Malatya", "Manisa", "Sakarya", "Balıkesir"
+    };
+
+    private static final String[] statuses = {
+            "dolu", "boş", "bakımda", "gecikmeli", "iptal", "hizmet dışı"
+    };
+
     private static final Random random = new Random();
 
     public static void main(String[] args) throws Exception {
-        System.out.println("📦 KafkaDateBasedProducer başladı. Kafka'ya farklı tarihlerle veri gönderiliyor...");
+        System.out.println("📦 KafkaDateBasedProducer başladı. 10M veri (tek partition, zaman sıralı, 5 güne yayılmış)...");
 
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
@@ -25,39 +34,45 @@ public class KafkaDateBasedProducer {
         ObjectMapper mapper = new ObjectMapper();
 
         String topic = "testing-dated";
-        int partitionCount = 4;
+        int totalRecords = 10_000_000;
+        int partition = 0;
 
-        // 5 gün için veri üret (örnek: 1-5 Temmuz 2025)
-        LocalDate startDate = LocalDate.of(2025, 7, 1);
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+        DateTimeFormatter timestampFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
-        int recordsPerDayPerPartition = 5000;
+        int secondsToCover = 432_000;
+        int recordsPerSecond = totalRecords / secondsToCover;
+        int remainingRecords = totalRecords;
 
-        for (int partition = 0; partition < partitionCount; partition++) {
-            for (int dayOffset = 0; dayOffset < 5; dayOffset++) {
-                LocalDate currentDate = startDate.plusDays(dayOffset);
-                String datePrefix = formatter.format(currentDate); // e.g., 20250701
+        LocalDateTime currentTime = LocalDateTime.of(2025, 7, 1, 0, 0, 0);
+        int id = 0;
 
-                for (int i = 0; i < recordsPerDayPerPartition; i++) {
-                    Map<String, Object> record = new HashMap<>();
-                    record.put("id", partition * 1_000_000 + dayOffset * 10000 + i);
-                    record.put("city", cities[i % cities.length]);
-                    record.put("status", statuses[random.nextInt(statuses.length)]);
-                    record.put("speed", 20 + random.nextInt(80));
-                    record.put("routeNumber", random.nextInt(50) + 1);
-                    record.put("timestamp", datePrefix + String.format("%06d", i)); // e.g., 20250702000017
+        for (int s = 0; s < secondsToCover && remainingRecords > 0; s++) {
+            String timestamp = timestampFormatter.format(currentTime);
 
-                    String json = mapper.writeValueAsString(record);
-                    ProducerRecord<String, String> message = new ProducerRecord<>(topic, partition, null, json);
-                    producer.send(message);
-                }
+            for (int i = 0; i < recordsPerSecond && remainingRecords > 0; i++) {
+                Map<String, Object> record = new HashMap<>();
+                record.put("id", id++);
+                record.put("city", cities[random.nextInt(cities.length)]);
+                record.put("status", statuses[random.nextInt(statuses.length)]);
+                record.put("speed", 20 + random.nextInt(80));
+                record.put("routeNumber", random.nextInt(100) + 1);
+                record.put("timestamp", timestamp);
 
-                System.out.println("✅ Partition " + partition + ", Gün " + datePrefix + " verileri gönderildi.");
+                String json = mapper.writeValueAsString(record);
+                ProducerRecord<String, String> message = new ProducerRecord<>(topic, partition, null, json);
+                producer.send(message);
+                remainingRecords--;
             }
+
+            if (id % 500_000 == 0) {
+                System.out.println("📤 Gönderilen kayıt: " + id + " / " + totalRecords + " | Saat: " + timestamp);
+            }
+
+            currentTime = currentTime.plusSeconds(1);
         }
 
         producer.flush();
         producer.close();
-        System.out.println("🎉 Farklı tarihlerle veri gönderimi tamamlandı.");
+        System.out.println("🎉 Toplam 10M veri başarıyla gönderildi.");
     }
 }

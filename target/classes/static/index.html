@@ -4,153 +4,947 @@
     <meta charset="UTF-8"/>
     <title>Kafka Search UI</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
-    <link rel="stylesheet" href="webStyle.css"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
     <style>
+          :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #64748b;
+            --success: #059669;
+            --danger: #dc2626;
+            --warning: #d97706;
+            --dark: #1e293b;
+            --light: #f8fafc;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            --radius: 8px;
+            --radius-lg: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: var(--dark);
+        }
+
+        .main-container {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            max-width: 1200px;
+            margin: 0 auto;
+            min-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: between;
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: auto;
+        }
+
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+
+        /* Content Area */
+        .content {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 0;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: #f8fafc;
+            border-right: 1px solid var(--border);
+            padding: 1rem;
+            overflow-y: auto;
+            overflow-x: visible;
+        }
+
+        /* Main Panel */
+        .main-panel {
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Card Styles */
+        .card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+            overflow: visible;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow);
+            transform: translateY(-1px);
+            z-index: 1;
+        }
+
+        .card-header {
+            background: var(--light);
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-body {
+            padding: 1rem;
+        }
+
+        .card-body:last-child {
+            padding-bottom: 1rem;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            font-size: 0.875rem;
+            color: var(--dark);
+        }
+
+        .form-control, .form-select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            background: white;
+        }
+
+        .form-control:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            justify-content: center;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #047857;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--secondary);
+        }
+
+        .btn-outline:hover {
+            background: var(--light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.8rem;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Layout Utilities */
+        .row {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .row:last-child {
+            margin-bottom: 0;
+        }
+
+        .col {
+            flex: 1;
+        }
+
+        /* Status Indicators */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-success {
+            background: rgb(34 197 94 / 0.1);
+            color: var(--success);
+        }
+
+        .status-warning {
+            background: rgb(245 158 11 / 0.1);
+            color: var(--warning);
+        }
+
+        .status-danger {
+            background: rgb(239 68 68 / 0.1);
+            color: var(--danger);
+        }
+
+        /* Mode Selection */
+        .mode-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .mode-option {
+            padding: 0.75rem;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+        }
+
+        .mode-option:hover {
+            border-color: var(--primary);
+            background: rgb(37 99 235 / 0.05);
+        }
+
+        .mode-option.active {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: white;
+        }
+
+        .mode-icon {
+            font-size: 1.2rem;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+
+        .mode-text {
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        /* Autocomplete */
+        .autocomplete-container {
+            position: relative;
+            z-index: 2000;
+        }
+
+        .autocomplete-box {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 2001;
+            margin-top: 2px;
+        }
+
+        .autocomplete-box div {
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            border-bottom: 1px solid rgb(226 232 240 / 0.5);
+        }
+
+        .autocomplete-box div:hover {
+            background: var(--light);
+        }
+
+        .autocomplete-box div:last-child {
+            border-bottom: none;
+        }
+
+        /* Filter Mode */
+        .filter-mode {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .filter-mode label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 0.875rem;
+            background: white;
+            transition: all 0.2s;
+        }
+
+        .filter-mode input[type="radio"] {
+            margin: 0;
+        }
+
+        .filter-mode input[type="radio"]:checked + label,
+        .filter-mode label:has(input[type="radio"]:checked) {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Results */
+        .result-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .result-tab {
+            position: relative;
+            padding: 0.5rem 1rem;
+            background: var(--light);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .result-tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .result-tab .close-x {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 18px;
+            height: 18px;
+            background: var(--danger);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+
+        .record-entry {
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            position: relative;
+        }
+
+        .record-entry::before {
+            content: none !important;
+        }
+
+        /* Settings Panel */
+        .settings-panel {
+            position: fixed;
+            top: 0;
+            right: -320px;
+            width: 320px;
+            height: 100vh;
+            background: white;
+            box-shadow: -4px 0 20px rgb(0 0 0 / 0.1);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .settings-panel.open {
+            right: 0;
+        }
+
+        .settings-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--light);
+        }
+
+        .settings-body {
+            padding: 1.5rem;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* Info Message */
+        .info-message {
+            text-align: center;
+            padding: 2rem;
+            color: var(--secondary);
+        }
+
+        .info-message i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        /* Search Button */
+        .search-section {
+            margin-top: auto;
+            padding-top: 1rem;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            font-size: 1rem;
+            display: inline-flex;
+            border-radius: var(--radius);
+            font-weight: 600;
+            width: auto;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 7px;
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgb(5 150 105 / 0.3);
+        }
+
+        .search-btn::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .search-btn:active::after {
+            width: 300px;
+            height: 300px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .settings-panel {
+                width: 100%;
+                right: -100%;
+            }
+
+            .row {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .mode-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
 
     </style>
 </head>
 <body>
 
-<button id="settingsBtn" class="btn btn-outline-secondary"
-        style="position: fixed; top: 1.2rem; right: 1.2rem; z-index: 1100;" onclick="toggleSettingsPanel()">
-    ⚙️
-</button>
-
-<div id="settingsPanel"
-     style="position: fixed; top: 0; right: -300px; width: 280px; height: 100%; background: #fff; border-left: 1px solid #ccc; box-shadow: -2px 0 5px rgba(0,0,0,0.1); transition: right 0.3s ease; z-index: 1099; padding: 1rem;">
-    <h5>🔧 Settings</h5>
-    <label class="form-label mt-3">Threads (recommended: 4)</label>
-    <input type="number" id="threadCount" class="form-control" min="1" value="4">
-
-    <label class="form-label mt-3">Poll Records (max: 5000)</label>
-    <input type="number" id="pollRecords" class="form-control" min="1" value="500">
-
-    <label class="form-label mt-3">Kafka Timeout (ms)</label>
-    <input type="number" id="timeoutInput" class="form-control" min="1000" step="1000" placeholder="30000">
-
-    <button class="btn btn-sm btn-success mt-3" onclick="saveSettings()">Apply</button>
-</div>
-
-<div class="container">
-    <h1 class="mb-4">🔎 K-Search</h1>
-    <div class="layout-split">
-
-        <div class="left-pane">
-            <div class="section">
-                <label for="kafkaAddress" class="form-label">Kafka Address (IP:PORT)</label>
-                <input type="text" id="kafkaAddress" class="form-control" placeholder="e.g., 127.0.0.1:9092">
-                <button id="loadTopicsBtn" onclick="loadTopics()" class="btn btn-success mt-2">Load Topics</button>
-            </div>
-
-            <div class="section" id="topicSection" style="display: none;">
-                <label for="topicSelect" class="form-label">Kafka Topic</label>
-                <input type="text" id="topicSelect" class="form-control" placeholder="Search or select topic..."
-                       oninput="filterTopics()" onfocus="showAllTopics()" autocomplete="off">
-                <div id="autocompleteBox" class="autocomplete-box"></div>
-            </div>
-
-            <div class="section" id="searchOptions" style="display: none;">
-                <label for="searchMode" class="form-label">Mode</label>
-                <select id="searchMode" class="form-select">
-                    <option value="all">all</option>
-                    <option value="last">last</option>
-                    <option value="date">date</option>
-                    <option value="lastN">lastN</option>
-                    <option value="manual">manual</option>
-                    <option value="copy">copy</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="vertical-divider"></div>
-
-        <div class="right-pane">
-            <div id="modExplanation" class="section text-muted" style="display: none;">
-                <strong>Mode Explanation:</strong>
-                <p id="modExplanationText">Seçilen mod hakkında bilgi burada görünecek.</p>
-            </div>
-            <div id="rightInfoMessage" class="section text-muted text-center">
-                <p><em>The input fields for the selected mode will be displayed here.</em></p>
-            </div>
-            <div id="dateContainer" class="section" style="display: none;">
-                <div><strong>Topic Partitions:</strong> <span id="datePartitions">Loading...</span></div>
-                <label for="dateKey" class="form-label mt-2">Date Field Key (e.g. date)</label>
-                <input type="text" id="dateKey" class="form-control" placeholder="Key to check (e.g., date)">
-
-                <label for="targetDate" class="form-label mt-2">Target Date</label>
-                <input type="text" id="targetDate" class="form-control" placeholder="Format: YYYYMMDD">
-
-                <label for="partitionInputFirst" class="form-label mt-2">Partition</label>
-                <input type="number" id="partitionInputFirst" class="form-control" value="0" min="0">
-            </div>
-
-            <div id="lastNContainer" class="section" style="display: none;">
-                <label for="lastNCount" class="form-label">How many messages back do you want to scan?</label>
-                <input type="number" id="lastNCount" class="form-control" min="1">
-            </div>
-
-            <div id="manualContainer" class="section" style="display: none;">
-                <div><strong>Offset Range:</strong> Min: <span id="minOffset">?</span>, Max: <span
-                        id="maxOffset">?</span></div>
-                <label for="startOffset" class="form-label mt-2">Start Offset</label>
-                <input type="number" id="startOffset" class="form-control">
-                <label for="endOffset" class="form-label mt-2">End Offset</label>
-                <input type="number" id="endOffset" class="form-control">
-            </div>
-
-            <div id="copyContainer" class="section" style="display: none;">
-                <div><strong>Offset Range:</strong> Min: <span id="copyMinOffset">?</span>, Max: <span
-                        id="copyMaxOffset">?</span></div>
-                <div><strong>Partitions:</strong> <span id="partitionList">Loading...</span></div>
-                <label for="copyStartOffset" class="form-label mt-2">Start Offset</label>
-                <input type="number" id="copyStartOffset" class="form-control">
-                <label for="copyEndOffset" class="form-label mt-2">End Offset</label>
-                <input type="number" id="copyEndOffset" class="form-control">
-                <label for="partitionInput" class="form-label mt-2">Partition</label>
-                <input type="number" id="partitionInput" class="form-control" value="0" min="0">
-                <label for="targetKafka" class="form-label mt-2">Target Kafka Address</label>
-                <input type="text" id="targetKafka" class="form-control">
-                <label for="targetTopic" class="form-label mt-2">Target Topic</label>
-                <input type="text" id="targetTopic" class="form-control">
-            </div>
-        </div>
-    </div>
-
-
-    <div class="section" id="filtersContainer" style="display: none;">
-        <div id="filterModeContainer" class="mb-2 d-flex align-items-center flex-wrap small">
-            <label class="me-2 mb-1"><strong>Filter Mode:</strong></label>
-            <div class="form-check form-check-inline mb-1">
-                <input class="form-check-input" type="radio" name="modeType" id="stringMode" value="string" checked
-                       onchange="onFilterModeChange()">
-                <label class="form-check-label" for="stringMode">String</label>
-            </div>
-            <div class="form-check form-check-inline mb-1">
-                <input class="form-check-input" type="radio" name="modeType" id="jsonMode" value="json"
-                       onchange="onFilterModeChange()">
-                <label class="form-check-label" for="jsonMode">JSON</label>
-            </div>
-            <div class="form-check form-check-inline mb-1">
-                <input class="form-check-input" type="radio" name="modeType" id="patternMode" value="pattern"
-                       onchange="onFilterModeChange()">
-                <label class="form-check-label" for="patternMode">Pattern</label>
-            </div>
-        </div>
-        <div id="dynamicFilters"></div>
-        <button class="btn btn-sm btn-outline-success mt-2" onclick="addFilter()">+ Add Filter</button>
-    </div>
-
-    <div id="finalSearch" class="mb-3" style="display: none;">
-        <button id="searchButton" onclick="searchKafka(filterMode, filterIndex)" class="btn btn-success">Search Kafka
+<div class="main-container">
+    <!-- Header -->
+    <div class="header">
+        <h1>
+            <i class="fas fa-search"></i>
+            K-Alp Search
+        </h1>
+        <button class="settings-btn" onclick="toggleSettingsPanel()">
+            <i class="fas fa-cog"></i>
         </button>
     </div>
 
-    <div class="section">
-        <h5>Results:</h5>
-        <div id="resultTabs"></div>
-        <div id="resultBoxes"></div>
+    <!-- Content -->
+    <div class="content">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Connection -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-plug"></i>
+                    Connection
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Kafka Address</label>
+                        <input type="text" id="kafkaAddress" class="form-control" placeholder="127.0.0.1:9092">
+                    </div>
+                    <button id="loadTopicsBtn" onclick="loadTopics()" class="btn btn-primary btn-block">
+                        <i class="fas fa-download"></i>
+                        Load Topics
+                    </button>
+                </div>
+            </div>
+
+            <!-- Topic Selection -->
+            <div class="card" id="topicSection" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-list"></i>
+                    Topic Selection
+                </div>
+                <div class="card-body">
+                    <div class="form-group autocomplete-container">
+                        <label class="form-label">Select Topic</label>
+                        <input type="text" id="topicSelect" class="form-control" placeholder="Search topics..."
+                               oninput="filterTopics()" onfocus="showAllTopics()" autocomplete="off">
+                        <div id="autocompleteBox" class="autocomplete-box"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Mode -->
+            <div class="card" id="searchOptions" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-sliders-h"></i>
+                    Search Mode
+                </div>
+                <div class="card-body">
+                    <div class="mode-grid">
+                        <div class="mode-option" data-mode="all">
+                            <span class="mode-icon">🌍</span>
+                            <div class="mode-text">All</div>
+                        </div>
+                        <div class="mode-option" data-mode="last">
+                            <span class="mode-icon">⏰</span>
+                            <div class="mode-text">Last</div>
+                        </div>
+                        <div class="mode-option" data-mode="date">
+                            <span class="mode-icon">📅</span>
+                            <div class="mode-text">Date</div>
+                        </div>
+                        <div class="mode-option" data-mode="lastN">
+                            <span class="mode-icon">🔢</span>
+                            <div class="mode-text">Last N</div>
+                        </div>
+                        <div class="mode-option" data-mode="manual">
+                            <span class="mode-icon">⚙️</span>
+                            <div class="mode-text">Manual</div>
+                        </div>
+                        <div class="mode-option" data-mode="copy">
+                            <span class="mode-icon">📋</span>
+                            <div class="mode-text">Copy</div>
+                        </div>
+                    </div>
+                    <select id="searchMode" class="form-select" style="display: none;">
+                        <option value="all">all</option>
+                        <option value="last">last</option>
+                        <option value="date">date</option>
+                        <option value="lastN">lastN</option>
+                        <option value="manual">manual</option>
+                        <option value="copy">copy</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Panel -->
+        <div class="main-panel">
+            <!-- Mode Configuration -->
+            <div id="modExplanation" class="card" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-info-circle"></i>
+                    Mode Configuration
+                </div>
+                <div class="card-body">
+                    <p id="modExplanationText">Seçilen mod hakkında bilgi burada görünecek.</p>
+                </div>
+            </div>
+
+            <!-- Default Info -->
+            <div id="rightInfoMessage" class="info-message">
+                <i class="fas fa-arrow-left"></i>
+                <p>Configure your search parameters using the sidebar controls.</p>
+            </div>
+
+            <!-- Date Container -->
+            <div id="dateContainer" class="card" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-calendar-alt"></i>
+                    Date Search Configuration
+                </div>
+                <div class="card-body">
+                    <div class="status-badge status-success">
+                        <i class="fas fa-layer-group"></i>
+                        Partitions: <span id="datePartitions">Loading...</span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label class="form-label">Date Field Key</label>
+                                <input type="text" id="dateKey" class="form-control" placeholder="e.g., date">
+                            </div>
+                        </div>
+                        <div class="col" style="flex: 0 0 100px;">
+                            <div class="form-group">
+                                <label class="form-label">Partition</label>
+                                <input type="number" id="partitionInputFirst" class="form-control" value="0" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Target Date</label>
+                        <input type="text" id="targetDate" class="form-control" placeholder="YYYYMMDD">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Last N Container -->
+            <div id="lastNContainer" class="card" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-backward"></i>
+                    Last N Messages
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Message Count</label>
+                        <input type="number" id="lastNCount" class="form-control" min="1" placeholder="Enter count">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual Container -->
+            <div id="manualContainer" class="card" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-cogs"></i>
+                    Manual Offset Range
+                </div>
+                <div class="card-body">
+                    <div class="status-badge status-warning">
+                        <i class="fas fa-chart-line"></i>
+                        Range: <span id="minOffset">?</span> - <span id="maxOffset">?</span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label class="form-label">Start Offset</label>
+                                <input type="number" id="startOffset" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="form-group">
+                                <label class="form-label">End Offset</label>
+                                <input type="number" id="endOffset" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Copy Container -->
+            <div id="copyContainer" class="card" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-copy"></i>
+                    Copy Configuration
+                </div>
+                <div class="card-body">
+                    <div class="status-badge status-success">
+                        <i class="fas fa-chart-line"></i>
+                        Range: <span id="copyMinOffset">?</span> - <span id="copyMaxOffset">?</span>
+                    </div>
+                    <div class="status-badge status-success">
+                        <i class="fas fa-layer-group"></i>
+                        Partitions: <span id="partitionList">Loading...</span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label class="form-label">Start Offset</label>
+                                <input type="number" id="copyStartOffset" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="form-group">
+                                <label class="form-label">End Offset</label>
+                                <input type="number" id="copyEndOffset" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col" style="flex: 0 0 100px;">
+                            <div class="form-group">
+                                <label class="form-label">Partition</label>
+                                <input type="number" id="partitionInput" class="form-control" value="0" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label class="form-label">Target Kafka</label>
+                                <input type="text" id="targetKafka" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="form-group">
+                                <label class="form-label">Target Topic</label>
+                                <input type="text" id="targetTopic" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div id="filterModeContainer" class="card" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-filter"></i>
+                    Filters
+                </div>
+                <div class="card-body">
+                    <div class="filter-mode">
+                        <label>
+                            <input type="radio" name="modeType" id="jsonMode" value="json" checked onchange="onFilterModeChange()">
+                            <i class="fab fa-js"></i> JSON
+                        </label>
+                        <label>
+                            <input type="radio" name="modeType" id="patternMode" value="pattern" onchange="onFilterModeChange()">
+                            <i class="fas fa-search"></i> Pattern
+                        </label>
+                        <label>
+                            <input type="radio" name="modeType" id="stringMode" value="string" onchange="onFilterModeChange()">
+                            <i class="fas fa-font"></i> String
+                        </label>
+                    </div>
+                    <div id="dynamicFilters"></div>
+                    <button class="btn btn-outline btn-sm" onclick="addFilter()">
+                        <i class="fas fa-plus"></i>
+                        Add Filter
+                    </button>
+                </div>
+            </div>
+
+
+
+            <!-- Search Button -->
+            <div id="finalSearch" class="search-section" style="display: none;">
+                <button id="searchButton" onclick="searchKafka(filterMode, filterIndex)" class="search-btn">
+                     Start Search
+                </button>
+            </div>
+
+            <!-- Results -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar"></i>
+                    Search Results
+                </div>
+                <div class="card-body">
+                    <div id="resultTabs" class="result-tabs"></div>
+                    <div id="resultBoxes"></div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<!-- Settings Panel -->
+<div id="settingsPanel" class="settings-panel">
+    <div class="settings-header">
+        <h3><i class="fas fa-cog"></i> Settings</h3>
+    </div>
+    <div class="settings-body">
+        <div class="form-group">
+            <label class="form-label">Thread Count</label>
+            <input type="number" id="threadCount" class="form-control" min="1" value="4">
+            <small class="text-muted">Recommended: 4</small>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Poll Records</label>
+            <input type="number" id="pollRecords" class="form-control" min="1" value="500">
+            <small class="text-muted">Maximum: 5000</small>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Kafka Timeout (ms)</label>
+            <input type="number" id="timeoutInput" class="form-control" min="1000" step="1000" placeholder="30000">
+        </div>
+
+        <button class="btn btn-success btn-block" onclick="saveSettings()">
+            <i class="fas fa-save"></i>
+            Apply Settings
+        </button>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.mode-option').forEach(option => {
+    option.addEventListener('click', function() {
+        document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('active'));
+        this.classList.add('active');
+
+        const mode = this.dataset.mode;
+        document.getElementById('searchMode').value = mode;
+
+        const event = new Event('change');
+        document.getElementById('searchMode').dispatchEvent(event);
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const firstMode = document.querySelector('.mode-option[data-mode="all"]');
+    if (firstMode) {
+        firstMode.classList.add('active');
+    }
+});
+
+document.addEventListener('click', function(e) {
+    const panel = document.getElementById('settingsPanel');
+    const settingsBtn = document.querySelector('.settings-btn');
+
+    if (!panel.contains(e.target) && !settingsBtn.contains(e.target)) {
+        panel.style.right = '-320px';
+    }
+});
+</script>
 <script src="webController.js"></script>
 </body>
 </html>

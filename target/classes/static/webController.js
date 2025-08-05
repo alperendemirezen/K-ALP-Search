@@ -21,14 +21,9 @@ function onFilterModeChange() {
     container.innerHTML = "";
     filterIndex = 0;
 
-    addFilter();
-
     const addButton = document.querySelector('button[onclick="addFilter()"]');
-    if (filterMode === "pattern") {
-        addButton.style.display = "none";
-    } else {
-        addButton.style.display = "inline-block";
-    }
+    addButton.style.display = "inline-block";
+
 
     document.getElementById("filtersContainer").style.display = "block";
     document.getElementById("finalSearch").style.display = "block";
@@ -52,6 +47,7 @@ function topicSelected() {
     const topic = document.getElementById("topicSelect").value.trim();
     if (!topic) return;
 
+    document.getElementById("finalSearch").style.display = "block";
     document.getElementById("searchOptions").style.display = "block";
     document.getElementById("filterModeContainer").style.display = "block";
     document.getElementById("rightInfoMessage").style.display = "none";
@@ -73,7 +69,7 @@ function showFilterStep() {
         }
     }
 
-
+    document.getElementById("finalSearch").style.display = "block";
     document.getElementById("filterModeContainer").style.display = "block";
     onFilterModeChange();
 }
@@ -119,9 +115,9 @@ window.onload = function () {
 
         const searchButton = document.getElementById("searchButton");
         if (mode === "copy") {
-            searchButton.textContent = "Copy";
+            searchButton.textContent = "Start Copy";
         } else {
-            searchButton.textContent = "Search";
+            searchButton.textContent = "Start Search";
         }
 
     });
@@ -266,7 +262,7 @@ function searchKafka(filterMode, filterIndex) {
             if (keyInput && valueInput) {
                 const key = keyInput.value.trim();
                 const value = valueInput.value.trim();
-                if (!key || !value) return alert(`Eksik filtre`);
+                if (!key || !value) return alert(`Missing filter`);
                 filters[key] = value;
             }
         }
@@ -277,7 +273,7 @@ function searchKafka(filterMode, filterIndex) {
             const input = document.getElementById(`raw_${i}`);
             if (input) {
                 const value = input.value.trim();
-                if (!value) return alert(`Eksik string filtre`);
+                if (!value) return alert(`Missing string filter`);
                 rawFilters.push(value);
             }
         }
@@ -354,8 +350,8 @@ function searchKafka(filterMode, filterIndex) {
             const reverseBtn = document.createElement("button");
             reverseBtn.className = "btn btn-sm btn-outline-secondary me-2";
             reverseBtn.style.position = "absolute";
-            reverseBtn.style.bottom = "2rem";
-            reverseBtn.style.right = "0.4rem";
+            reverseBtn.style.bottom = "0.5rem";
+            reverseBtn.style.right = "0.5rem";
             reverseBtn.textContent = "↕ Reverse";
             reverseBtn.title = "Reverse result order";
             reverseBtn.onclick = () => {
@@ -368,10 +364,11 @@ function searchKafka(filterMode, filterIndex) {
             const downloadBtn = document.createElement("button");
             downloadBtn.className = "btn btn-sm btn-outline-primary";
             downloadBtn.style.position = "absolute";
-            downloadBtn.style.top = "-5rem";
+            downloadBtn.style.top = "-4rem";
             downloadBtn.style.right = "0.5rem";
             downloadBtn.title = "Download results";
             downloadBtn.innerHTML = "⬇ Download";
+
 
             downloadBtn.onclick = () => {
                 let headerLines = [];
@@ -402,6 +399,7 @@ function searchKafka(filterMode, filterIndex) {
 
             summary.appendChild(downloadBtn);
             box.appendChild(summary);
+
 
             if (!data || data.length === 0) {
                 box.innerHTML += "<em>No matching results.</em>";
@@ -481,25 +479,25 @@ function addFilter(key = "", value = "") {
 
     if (filterMode === "json") {
         row.innerHTML = `
-      <div class="col-md-5">
-        <input type="text" class="form-control" id="key_${filterIndex}" placeholder="Key" value="${key}">
-      </div>
-      <div class="col-md-5">
-        <input type="text" class="form-control" id="value_${filterIndex}" placeholder="Value" value="${value}">
-      </div>
-      <div class="col-md-2 text-end">
-        <button class="btn btn-sm btn-outline-danger" onclick="removeFilter(${filterIndex})">−</button>
-      </div>
-    `;
+          <div class="col-md-5">
+            <input type="text" class="form-control" id="key_${filterIndex}" placeholder="Key" value="${key}">
+          </div>
+          <div class="col-md-5">
+            <input type="text" class="form-control" id="value_${filterIndex}" placeholder="Value" value="${value}">
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <button class="btn btn-sm btn-outline-danger" onclick="removeFilter(${filterIndex})">−</button>
+          </div>
+        `;
     } else {
         row.innerHTML = `
-      <div class="col-md-10">
-        <input type="text" class="form-control" id="raw_${filterIndex}" placeholder="${filterMode === 'pattern' ? 'Regex pattern' : 'String filter'}" value="${key}">
-      </div>
-      <div class="col-md-2 text-end">
-        <button class="btn btn-sm btn-outline-danger" onclick="removeFilter(${filterIndex})">−</button>
-      </div>
-    `;
+          <div class="col-md-10">
+            <input type="text" class="form-control" id="raw_${filterIndex}" placeholder="${filterMode === 'pattern' ? 'Regex pattern' : 'String filter'}" value="${key}">
+          </div>
+          <div class="col-md-1 text-end">
+            <button class="btn btn-sm btn-outline-danger" onclick="removeFilter(${filterIndex})">−</button>
+          </div>
+        `;
     }
 
     container.appendChild(row);
