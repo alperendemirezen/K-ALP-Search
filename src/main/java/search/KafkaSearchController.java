@@ -3,6 +3,7 @@ package search;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.coyote.Request;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -25,6 +26,7 @@ public class KafkaSearchController {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, List<Future<List<String>>>> activeRequests = new ConcurrentHashMap<>();
+
 
     private Properties getKafkaProps(String bootstrapServers) {
         Properties props = new Properties();
@@ -213,18 +215,67 @@ public class KafkaSearchController {
         }
 
         if ("last".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[JSONSearch] Mode 'last' detected. Executing single record fetch.");
-            return searchLastRecordJSON(ctx.topic, ctx.partitions, ctx.props, request.getFilters());
+
+            System.out.println("[JSONSearch] Mode 'last' with executor.");
+
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> searchLastRecordJSON(
+                    ctx.topic, ctx.partitions, ctx.props, request.getFilters()
+            );
+
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[JSONSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
+
         }
 
         if ("copy".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[JSONSearch] Mode 'copy' detected. Executing copy mode.");
-            return copyMode(request);
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> copyMode(request);
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[JSONSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
         }
 
         if ("date".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[JSONSearch] Mode 'date' detected. Executing date-based search.");
-            return DateMode(request);
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> DateMode(request);
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[JSONSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
         }
 
         ctx.consumer.assign(ctx.partitions);
@@ -285,6 +336,10 @@ public class KafkaSearchController {
     }
 
 
+
+
+
+
     @PostMapping("/simple-string-search")
     public List<String> stringSearch(@RequestBody SearchRequest request) throws InterruptedException, ExecutionException {
         System.out.println("[stringSearch] Search request received for topic: " + request.getTopic());
@@ -298,18 +353,67 @@ public class KafkaSearchController {
         }
 
         if ("last".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[stringSearch] Mode 'last' detected. Executing single record string search.");
-            return searchLastRecordString(ctx.topic, ctx.partitions, ctx.props, rawFilters);
+
+            System.out.println("[stringSearch] Mode 'last' with executor.");
+
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> searchLastRecordString(
+                    ctx.topic, ctx.partitions, ctx.props, rawFilters
+            );
+
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[stringSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
+
         }
 
         if ("copy".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[stringSearch] Mode 'copy' detected. Executing copy mode.");
-            return copyMode(request);
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> copyMode(request);
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[stringSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
         }
 
         if ("date".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[stringSearch] Mode 'date' detected. Executing date-based string search.");
-            return DateMode(request);
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> DateMode(request);
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[stringSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
         }
 
         int threads = request.getThreads() > 0 ? request.getThreads() : 4;
@@ -382,18 +486,67 @@ public class KafkaSearchController {
         }
 
         if ("last".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[patternSearch] Mode 'last' detected. Executing single-record pattern search.");
-            return searchLastRecordPattern(ctx.topic, ctx.partitions, ctx.props, patterns);
+
+            System.out.println("[patternSearch] Mode 'last' with executor.");
+
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> searchLastRecordPattern(
+                    ctx.topic, ctx.partitions, ctx.props, patterns
+            );
+
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[patternSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
+
         }
 
         if ("copy".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[patternSearch] Mode 'copy' detected. Executing copy mode.");
-            return copyMode(request);
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> copyMode(request);
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[patternSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
         }
 
         if ("date".equalsIgnoreCase(ctx.mode)) {
-            System.out.println("[patternSearch] Mode 'date' detected. Executing date-based pattern search.");
-            return DateMode(request);
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+
+            Callable<List<String>> task = () -> DateMode(request);
+            ctx.futures.add(executor.submit(task));
+
+            List<String> results = new ArrayList<>();
+            for (Future<List<String>> f : ctx.futures) {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    System.out.println("[patternSearch] Max result limit reached. Truncating results.");
+                    break;
+                }
+            }
+            executor.shutdownNow();
+            return results;
         }
 
         int threads = request.getThreads() > 0 ? request.getThreads() : 4;
@@ -454,6 +607,7 @@ public class KafkaSearchController {
                                               List<TopicPartition> partitions,
                                               Properties props,
                                               Map<String, String> filters) {
+        boolean isCancelled = false;
         int stepSize = 500;
         System.out.println("[searchLastRecordJSON] Starting last record search for topic: " + topic);
         System.out.println("[searchLastRecordJSON] Filters applied: " + filters);
@@ -518,6 +672,7 @@ public class KafkaSearchController {
         System.out.println("[searchLastRecordJSON] Search finished. No matching records found.");
         return List.of();
     }
+
 
 
     private List<String> searchLastRecordString(String topic,
@@ -641,8 +796,6 @@ public class KafkaSearchController {
         System.out.println("[searchLastRecordPattern] Search finished. No matching records found.");
         return List.of();
     }
-
-
 
     private List<String> consumePartitionRangeJSON(String topic, int partition, long startOffset, long endOffset,
                                                    Properties props, Map<String, String> filters, int maxResults) {
