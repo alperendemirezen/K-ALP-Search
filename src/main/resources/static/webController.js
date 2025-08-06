@@ -300,6 +300,11 @@ function searchKafka(filterMode, filterIndex) {
     box.className = "result-box";
     box.id = id + "_box";
     box.style.display = "none";
+
+    box.setAttribute("data-body", JSON.stringify(body));
+    box.setAttribute("data-filter-mode", filterMode);
+    box.setAttribute("data-filter-index", filterIndex);
+
     document.getElementById("resultBoxes").appendChild(box);
 
     let url;
@@ -368,6 +373,16 @@ function searchKafka(filterMode, filterIndex) {
             downloadBtn.style.right = "0.5rem";
             downloadBtn.title = "Download results";
             downloadBtn.innerHTML = "⬇ Download";
+
+            const retryBtn = document.createElement("button");
+            retryBtn.className = "btn btn-sm btn-outline-warning me-2";
+            retryBtn.style.position = "absolute";
+            retryBtn.style.bottom = "4.7rem";
+            retryBtn.style.right = "0.5rem";
+            retryBtn.textContent = "↻ Retry";
+            retryBtn.title = "Retry this search";
+            retryBtn.onclick = () => retrySearch(id);  // Burada id geçiyoruz
+            summary.appendChild(retryBtn);
 
 
             downloadBtn.onclick = () => {
@@ -628,4 +643,173 @@ function saveSettings() {
 
     alert(`Settings saved:\nThreads: ${threads}\nPoll Records: ${records}\nTimeout: ${timeout} ms`);
     toggleSettingsPanel();
+}
+
+function retrySearch(id) {
+    const box = document.getElementById(id + "_box");
+    if (!box) return alert("Original search data not found.");
+
+    const bodyStr = box.getAttribute("data-body");
+    const filterMode = box.getAttribute("data-filter-mode");
+    const filterIndex = parseInt(box.getAttribute("data-filter-index") || "0");
+
+    if (!bodyStr || !filterMode) return alert("Missing retry data.");
+
+    let body;
+    try {
+        body = JSON.parse(bodyStr);
+    } catch (e) {
+        return alert("Failed to parse stored search body.");
+    }
+
+    body.requestId = `retry_${++searchCount}`;
+    const newId = body.requestId;
+
+    const controller = new AbortController();
+    abortControllers[newId] = controller;
+
+    const tab = document.createElement("div");
+    tab.className = "result-tab";
+    tab.id = newId + "_tab";
+    tab.innerHTML = `
+      Retry ${searchCount}
+      <span class="spinner-border spinner-border-sm" role="status"></span>
+      <span class="close-x" onclick="event.stopPropagation(); killResult('${newId}')">&times;</span>
+    `;
+    tab.onclick = () => toggleResult(newId);
+    document.getElementById("resultTabs").appendChild(tab);
+
+    const newBox = document.createElement("div");
+    newBox.className = "result-box";
+    newBox.id = newId + "_box";
+    newBox.style.display = "none";
+    document.getElementById("resultBoxes").appendChild(newBox);
+
+    newBox.setAttribute("data-body", JSON.stringify(body));
+    newBox.setAttribute("data-filter-mode", filterMode);
+    newBox.setAttribute("data-filter-index", filterIndex);
+
+    let url;
+    if (filterMode === "json") {
+        url = "/search";
+    } else if (filterMode === "pattern") {
+        url = "/search/pattern-search";
+    } else {
+        url = "/search/simple-string-search";
+    }
+
+    fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal
+    })
+        .then(res => res.json())
+        .then(data => {
+            const spinner = tab.querySelector(".spinner-border");
+            if (spinner) spinner.remove();
+
+            newBox.innerHTML = "";
+
+            const summary = document.createElement("div");
+            summary.className = "filter-summary";
+            summary.innerHTML = `
+<div><strong>Filter Type:</strong> ${filterMode === "json"
+                ? "JSON"
+                : filterMode === "pattern"
+                    ? "Pattern"
+                    : "String"
+            }</div>
+  <div><strong>Filters:</strong> ${filterMode === "json"
+                ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
+                : body.rawFilters.join(", ")
+            }</div>
+  <div><strong>Mode:</strong> ${body.mode}${body.mode === "lastN" ? ` (${body.lastN})` : ""}${body.mode === "manual" ? ` (Offsets: ${body.startOffset} - ${body.endOffset})` : ""}</div>
+  <div><strong>Results Found:</strong> ${data.length}</div>
+  <hr style="margin: 0.4rem 0;" />`;
+
+            summary.style.position = "relative";
+
+            const reverseBtn = document.createElement("button");
+            reverseBtn.className = "btn btn-sm btn-outline-secondary me-2";
+            reverseBtn.style.position = "absolute";
+            reverseBtn.style.bottom = "0.5rem";
+            reverseBtn.style.right = "0.5rem";
+            reverseBtn.textContent = "⇕ Reverse";
+            reverseBtn.title = "Reverse result order";
+            reverseBtn.onclick = () => {
+                const entries = Array.from(newBox.querySelectorAll(".record-entry"));
+                entries.reverse().forEach(entry => newBox.appendChild(entry));
+            };
+            summary.appendChild(reverseBtn);
+
+            const downloadBtn = document.createElement("button");
+            downloadBtn.className = "btn btn-sm btn-outline-primary";
+            downloadBtn.style.position = "absolute";
+            downloadBtn.style.top = "-4rem";
+            downloadBtn.style.right = "0.5rem";
+            downloadBtn.title = "Download results";
+            downloadBtn.innerHTML = "⬇ Download";
+
+            const retryBtn = document.createElement("button");
+            retryBtn.className = "btn btn-sm btn-outline-warning me-2";
+            retryBtn.style.position = "absolute";
+            retryBtn.style.bottom = "4.5rem";
+            retryBtn.style.right = "0.5rem";
+            retryBtn.textContent = "↻ Retry";
+            retryBtn.title = "Retry this search";
+            retryBtn.onclick = () => retrySearch(newId);
+            summary.appendChild(retryBtn);
+
+            downloadBtn.onclick = () => {
+                let headerLines = [];
+                headerLines.push(`Filter Type: ${filterMode === "json" ? "JSON" : "String"}`);
+
+                if (filterMode === "json") {
+                    headerLines.push("Filters: " + Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", "));
+                } else {
+                    headerLines.push("Filters: " + body.rawFilters.join(", "));
+                }
+
+                headerLines.push(`Mode: ${body.mode}${body.mode === "lastN" ? ` (${body.lastN})` : ""}${body.mode === "manual" ? ` (Offsets: ${body.startOffset} - ${body.endOffset})` : ""}`);
+
+                const resultsText = Array.from(newBox.querySelectorAll(".record-entry"))
+                    .map(div => div.textContent)
+                    .join("\n\n");
+
+                const textContent = headerLines.join("\n") + "\n\n" + resultsText;
+
+                const blob = new Blob([textContent], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = newId + ".txt";
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            summary.appendChild(downloadBtn);
+            newBox.appendChild(summary);
+
+            if (!data || data.length === 0) {
+                newBox.innerHTML += "<em>No matching results.</em>";
+                return;
+            }
+
+            data.forEach(record => {
+                const div = document.createElement("div");
+                div.className = "record-entry";
+                try {
+                    const parsed = JSON.parse(record);
+                    div.innerHTML = `<strong>Offset:</strong> ${parsed.offset}<br><pre>${JSON.stringify(parsed.value, null, 2)}</pre>`;
+                } catch {
+                    div.textContent = record;
+                }
+                newBox.appendChild(div);
+            });
+        })
+        .catch(err => {
+            if (err.name === "AbortError") return;
+            alert("Retry failed.");
+        });
 }

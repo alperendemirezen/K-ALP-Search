@@ -34,10 +34,10 @@ public class KafkaSearchController {
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("auto.offset.reset", "earliest");
         props.put("max.poll.records", 500);
-        props.put("request.timeout.ms", "60000");
-        props.put("session.timeout.ms", "60000");
-        props.put("default.api.timeout.ms", "60000");
-        props.put("max.poll.interval.ms", "60000");
+        props.put("request.timeout.ms", "30000");
+        props.put("session.timeout.ms", "30000");
+        props.put("default.api.timeout.ms", "30000");
+        props.put("max.poll.interval.ms", "30000");
         return props;
     }
 
@@ -165,7 +165,7 @@ public class KafkaSearchController {
         activeRequests.put(ctx.requestId, ctx.futures);
 
         int safePollRecords = request.getPollRecords() > 0 ? request.getPollRecords() : 500;
-        int safeTimeoutMs = request.getTimeoutMs() > 0 ? request.getTimeoutMs() : 60000;
+        int safeTimeoutMs = request.getTimeoutMs() > 0 ? request.getTimeoutMs() : 30000;
         ctx.props = getKafkaProps(request.getKafkaAddress(), safePollRecords, safeTimeoutMs);
         ctx.consumer = new KafkaConsumer<>(ctx.props);
 
@@ -191,7 +191,6 @@ public class KafkaSearchController {
 
         System.out.println(" [prepareSearch] Offset info fetched. Assigned partitions: " + ctx.partitions);
 
-        // Debug section
         System.out.println(" [prepareSearch] Consumer timeout configs:");
         System.out.println("  request.timeout.ms       = " + ctx.props.getProperty("request.timeout.ms"));
         System.out.println("  session.timeout.ms       = " + ctx.props.getProperty("session.timeout.ms"));
@@ -250,7 +249,7 @@ public class KafkaSearchController {
             }
 
             if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
-                start = request.getStartOffset() <= end - ctx.lastN + 1 ? end - ctx.lastN + 1 : start;
+                start = Math.max(end - ctx.lastN + 1, start);
                 System.out.println("[JSONSearch] lastN mode active. New start offset: " + start);
             }
 
@@ -330,7 +329,7 @@ public class KafkaSearchController {
             }
 
             if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
-                start = request.getStartOffset() <= end - ctx.lastN + 1 ? end - ctx.lastN + 1 : start;
+                start = Math.max(end - ctx.lastN + 1, start);
                 System.out.println("[stringSearch] lastN mode active. Adjusted start offset for partition " + tp.partition() + ": " + start);
             }
 
@@ -414,7 +413,7 @@ public class KafkaSearchController {
             }
 
             if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
-                start = request.getStartOffset() <= end - ctx.lastN + 1 ? end - ctx.lastN + 1 : start;
+                start = Math.max(end - ctx.lastN + 1, start);
                 System.out.println("[patternSearch] lastN mode active. Adjusted start offset for partition " + tp.partition() + ": " + start);
             }
 
@@ -662,7 +661,7 @@ public class KafkaSearchController {
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
                 long pollTimeout = props.containsKey("request.timeout.ms")
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
-                        : 60000;
+                        : 30000;
 
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
                 if (records.isEmpty()) {
@@ -723,7 +722,7 @@ public class KafkaSearchController {
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
                 long pollTimeout = props.containsKey("request.timeout.ms")
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
-                        : 60000;
+                        : 30000;
 
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
                 if (records.isEmpty()) {
@@ -775,7 +774,7 @@ public class KafkaSearchController {
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
                 long pollTimeout = props.containsKey("request.timeout.ms")
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
-                        : 60000;
+                        : 30000;
 
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
                 if (records.isEmpty()) {
@@ -893,7 +892,7 @@ public class KafkaSearchController {
             while (!done) {
                 long pollTimeout = props.containsKey("request.timeout.ms")
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
-                        : 60000;
+                        : 30000;
 
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
 
@@ -948,8 +947,6 @@ public class KafkaSearchController {
         List<String> results = new ArrayList<>();
         long resultOffset = -1;
 
-        while (resultOffset == -1) {
-
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
@@ -963,13 +960,14 @@ public class KafkaSearchController {
 
 
 
+            long closestAfterOffset = -1;
             while (low <= high) {
                 long mid = (low + high) / 2;
                 consumer.seek(tp, mid);
 
                 long pollTimeout = props.containsKey("request.timeout.ms")
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
-                        : 60000;
+                        : 30000;
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
                 Optional<ConsumerRecord<String, String>> recordOpt = records.records(tp).stream()
                         .filter(r -> r.offset() == mid)
@@ -1002,9 +1000,16 @@ public class KafkaSearchController {
                     if (cmp == 0) {
                         resultOffset = mid;
                         System.out.println("[DateMode] Match found at offset " + mid);
+                    }else{
+                        closestAfterOffset = mid;
                     }
                     high = mid - 1;
                 }
+            }
+
+            if (resultOffset == -1 && closestAfterOffset != -1) {
+                resultOffset = closestAfterOffset;
+                System.out.println("[DateMode] No exact match found. Using closest after offset " + resultOffset);
             }
 
 
@@ -1013,7 +1018,7 @@ public class KafkaSearchController {
                 int fetchedCount = 0;
                 long maxOffset = resultOffset + 100;
 
-                while (fetchedCount < 100) {
+                while (fetchedCount < 20) {
                     ConsumerRecords<String, String> fetchedRecords = consumer.poll(Duration.ofMillis(5000));
                     if (fetchedRecords.isEmpty()) {
                         break;
@@ -1031,7 +1036,7 @@ public class KafkaSearchController {
                         results.add(result.toString());
                         fetchedCount++;
 
-                        if (fetchedCount >= 100) break;
+                        if (fetchedCount >= 20) break;
                     }
                 }
 
@@ -1046,8 +1051,6 @@ public class KafkaSearchController {
         }
 
 
-        return results;
-    }
         System.out.println("[DateMode] Search complete. Matches: " + results.size());
         return results;
     }
