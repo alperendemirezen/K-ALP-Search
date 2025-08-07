@@ -8,7 +8,7 @@ public class SearchRequest {
     private Map<String, String> filters;
     private List<String> rawFilters;
     private String mode;
-    private Integer lastN;
+    private Long lastN;
     private String kafkaAddress;
     private String requestId;
     private Long startOffset;
@@ -39,7 +39,7 @@ public class SearchRequest {
         return mode;
     }
 
-    public Integer getLastN() {
+    public Long getLastN() {
         return lastN;
     }
 
