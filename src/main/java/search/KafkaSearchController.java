@@ -1002,6 +1002,7 @@ public class KafkaSearchController {
         int partition = request.getPartition();
         String key = request.getDateKey();
         String expectedDatePrefix = request.getDate();
+        int count = request.getCount();
 
         List<String> results = new ArrayList<>();
         long resultOffset = -1;
@@ -1076,38 +1077,45 @@ public class KafkaSearchController {
             }
 
             if (resultOffset != -1) {
-                logger.debug("Fetching records starting from result offset: {}", resultOffset);
-                consumer.seek(tp, resultOffset);
-                int fetchedCount = 0;
-                long maxOffset = resultOffset + 100;
+                long startOffset = Math.max(0, resultOffset - count);
+                long endOffset = resultOffset + count;
+                List<ObjectNode> matchedRecords = new ArrayList<>();
 
-                while (fetchedCount < 20) {
-                    logger.debug("Fetching batch in DateMode, current count: {}", fetchedCount);
+                logger.debug("Fetching records around offset: {}", resultOffset);
+                consumer.seek(tp, startOffset);
+
+                while (true) {
                     ConsumerRecords<String, String> fetchedRecords = consumer.poll(Duration.ofMillis(5000));
-                    if (fetchedRecords.isEmpty()) {
-                        logger.debug("No more records available in DateMode fetch");
-                        break;
-                    }
+                    if (fetchedRecords.isEmpty()) break;
 
                     for (ConsumerRecord<String, String> record : fetchedRecords.records(tp)) {
-                        if (record.offset() >= maxOffset) {
-                            logger.debug("Reached max offset {} in DateMode fetch", maxOffset);
-                            break;
+                        if (record.offset() > endOffset) break;
+
+                        try {
+                            JsonNode jsonNode = objectMapper.readTree(record.value());
+                            JsonNode dateNode = jsonNode.get(key);
+
+                            if (dateNode != null && dateNode.asText().length() >= 14) {
+                                ObjectNode obj = objectMapper.createObjectNode();
+                                obj.put("offset", record.offset());
+                                obj.put("timestamp", dateNode.asText());
+                                obj.set("value", jsonNode);
+                                matchedRecords.add(obj);
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Error parsing record at offset {}", record.offset(), e);
                         }
-
-                        JsonNode jsonNode = objectMapper.readTree(record.value());
-                        ObjectNode result = objectMapper.createObjectNode();
-                        result.put("offset", record.offset());
-                        result.set("value", jsonNode);
-                        results.add(result.toString());
-                        fetchedCount++;
-                        logger.debug("Added record at offset {} to DateMode results", record.offset());
-
-                        if (fetchedCount >= 20) break;
                     }
+                    if (fetchedRecords.records(tp).stream().anyMatch(r -> r.offset() > endOffset)) break;
                 }
 
-                logger.info("DateMode retrieved {} records starting from offset {}", results.size(), resultOffset);
+                matchedRecords.sort(Comparator.comparing(n -> n.get("timestamp").asText()));
+
+                for (ObjectNode node : matchedRecords) {
+                    results.add(node.toString());
+                }
+
+                logger.info("DateMode retrieved {} records around offset {}", results.size(), resultOffset);
             } else {
                 logger.warn("No matching record found for given date prefix in DateMode");
             }

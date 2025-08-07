@@ -22,6 +22,7 @@ public class SearchRequest {
     private int threads;
     private int pollRecords;
     private int timeoutMs;
+    private int count;
 
     public String getTopic() {
         return topic;
@@ -95,11 +96,9 @@ public class SearchRequest {
         return timeoutMs;
     }
 
-
-
-
-
-
+    public int getCount() {
+        return count;
+    }
 }
 
 

@@ -219,6 +219,7 @@ function searchKafka(filterMode, filterIndex) {
     if (mode === "date") {
         const dateKey = document.getElementById("dateKey").value.trim();
         const targetDate = document.getElementById("targetDate").value.trim();
+        const targetCount = parseInt(document.getElementById("targetCount").value || "20");
         const partition = parseInt(document.getElementById("partitionInputFirst").value);
 
         if (!dateKey || !targetDate || isNaN(partition)) {
@@ -229,6 +230,7 @@ function searchKafka(filterMode, filterIndex) {
         body.date = targetDate;
         body.partition = partition;
         body.filterMode = filterMode;
+        body.count = targetCount;
     }
 
 
