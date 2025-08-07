@@ -3,7 +3,7 @@ package search;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.apache.coyote.Request;
+
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -12,6 +12,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.web.bind.annotation.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.time.Duration;
 import java.util.*;
@@ -24,11 +26,14 @@ import java.util.regex.Pattern;
 @RequestMapping("/search")
 public class KafkaSearchController {
 
+    private static final Logger logger = LogManager.getLogger(KafkaSearchController.class);
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, List<Future<List<String>>>> activeRequests = new ConcurrentHashMap<>();
 
 
     private Properties getKafkaProps(String bootstrapServers) {
+        logger.info("Creating Kafka props with default timeout configs for bootstrap.servers: {}", bootstrapServers);
         Properties props = new Properties();
         props.put("bootstrap.servers", bootstrapServers);
         props.put("group.id", "web-search-group");
@@ -40,10 +45,14 @@ public class KafkaSearchController {
         props.put("session.timeout.ms", "30000");
         props.put("default.api.timeout.ms", "30000");
         props.put("max.poll.interval.ms", "30000");
+
+        logger.debug("Kafka default timeout configs set - request.timeout.ms: 30000, session.timeout.ms: 30000, default.api.timeout.ms: 30000, max.poll.interval.ms: 30000");
         return props;
     }
 
     private Properties getKafkaProps(String bootstrapServers, int pollRecords, int timeoutMs) {
+        logger.info("Creating Kafka props with custom timeout configs for bootstrap.servers: {}, pollRecords: {}, timeoutMs: {}",
+                bootstrapServers, pollRecords, timeoutMs);
         Properties props = new Properties();
         props.put("bootstrap.servers", bootstrapServers);
         props.put("group.id", "web-search-group");
@@ -55,29 +64,34 @@ public class KafkaSearchController {
         props.put("session.timeout.ms", String.valueOf(timeoutMs));
         props.put("default.api.timeout.ms", String.valueOf(timeoutMs));
         props.put("max.poll.interval.ms", String.valueOf(timeoutMs));
+
+        logger.debug("Kafka custom timeout configs set - request.timeout.ms: {}, session.timeout.ms: {}, default.api.timeout.ms: {}, max.poll.interval.ms: {}",
+                timeoutMs, timeoutMs, timeoutMs, timeoutMs);
         return props;
     }
 
     private Properties getKafkaProducerProps(String kafkaAddress) {
+        logger.info("Creating Kafka producer props for address: {}", kafkaAddress);
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaAddress);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        logger.debug("Producer props created successfully");
         return props;
     }
 
     @GetMapping("/topics")
     public List<String> getAllTopics(@RequestParam("kafkaAddress") String kafkaAddress) {
-        System.out.println(" [getAllTopics] Request received to fetch Kafka topic list from address: " + kafkaAddress);
+        logger.info("getAllTopics request received for Kafka address: {}", kafkaAddress);
 
         Properties props = getKafkaProps(kafkaAddress);
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            logger.debug("Kafka consumer created for topic listing, attempting to connect...");
             List<String> topicList = new ArrayList<>(consumer.listTopics().keySet());
-            System.out.println(" [getAllTopics] Successfully fetched " + topicList.size() + " topics.");
+            logger.info("Successfully fetched {} topics from Kafka", topicList.size());
             return topicList;
         } catch (Exception e) {
-            System.out.println(" [getAllTopics] Error occurred while fetching topic list: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error occurred while fetching topic list from Kafka address: {}", kafkaAddress, e);
             return Collections.emptyList();
         }
     }
@@ -88,14 +102,15 @@ public class KafkaSearchController {
             @RequestParam("kafkaAddress") String kafkaAddress,
             @RequestParam("topic") String topic) {
 
-        System.out.println(" [getOffsetsAndPartitions] Request received to fetch offsets and partitions for topic: " + topic);
+        logger.info("getOffsetsAndPartitions request received for topic: {} on Kafka: {}", topic, kafkaAddress);
 
         Properties props = getKafkaProps(kafkaAddress);
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            logger.debug("Kafka consumer created, attempting to get partitions for topic: {}", topic);
 
             List<PartitionInfo> partitions = consumer.partitionsFor(topic);
             if (partitions == null || partitions.isEmpty()) {
-                System.out.println(" [getOffsetsAndPartitions] No partitions found for topic: " + topic);
+                logger.warn("No partitions found for topic: {}", topic);
                 return Map.of("startOffset", 0L, "endOffset", 0L, "partitions", List.of(0));
             }
 
@@ -106,7 +121,7 @@ public class KafkaSearchController {
                 partitionNumbers.add(p.partition());
             }
 
-            System.out.println(" [getOffsetsAndPartitions] Fetching beginning and end offsets...");
+            logger.debug("Fetching beginning and end offsets for {} partitions...", partitions.size());
 
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(topicPartitions);
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(topicPartitions);
@@ -114,8 +129,8 @@ public class KafkaSearchController {
             long min = beginningOffsets.values().stream().min(Long::compareTo).orElse(0L);
             long max = endOffsets.values().stream().max(Long::compareTo).orElse(0L);
 
-            System.out.println(" [getOffsetsAndPartitions] Offsets fetched. Start: " + min + ", End: " + (max - 1));
-            System.out.println(" [getOffsetsAndPartitions] Partitions: " + partitionNumbers);
+            logger.info("Offsets fetched successfully for topic: {} - Start: {}, End: {}, Partitions: {}",
+                    topic, min, max - 1, partitionNumbers);
 
             Map<String, Object> response = new HashMap<>();
             response.put("startOffset", min);
@@ -124,8 +139,7 @@ public class KafkaSearchController {
             return response;
 
         } catch (Exception e) {
-            System.out.println(" [getOffsetsAndPartitions] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error occurred while fetching offsets for topic: {} on Kafka: {}", topic, kafkaAddress, e);
             return Map.of("startOffset", 0L, "endOffset", 0L, "partitions", List.of(0));
         }
     }
@@ -134,23 +148,25 @@ public class KafkaSearchController {
     @PostMapping("/cancel")
     public void cancelSearch(@RequestBody Map<String, String> payload) {
         String requestId = payload.get("requestId");
-        System.out.println(" [cancelSearch] Cancel request received for requestId: " + requestId);
+        logger.info("Cancel search request received for requestId: {}", requestId);
 
         List<Future<List<String>>> futures = activeRequests.get(requestId);
         if (futures != null) {
+            logger.debug("Cancelling {} active futures for requestId: {}", futures.size(), requestId);
             for (Future<List<String>> future : futures) {
                 future.cancel(true);
             }
             activeRequests.remove(requestId);
-            System.out.println(" [cancelSearch] Request cancelled and removed from activeRequests: " + requestId);
+            logger.info("Request cancelled and removed from activeRequests: {}", requestId);
         } else {
-            System.out.println(" [cancelSearch] No active request found with requestId: " + requestId);
+            logger.warn("No active request found with requestId: {}", requestId);
         }
     }
 
 
     private SearchContext prepareSearch(SearchRequest request) {
-        System.out.println(" [prepareSearch] Preparing search context for topic: " + request.getTopic());
+        logger.info("Preparing search context for topic: {}, mode: {}, requestId: {}",
+                request.getTopic(), request.getMode(), request.getRequestId());
 
         SearchContext ctx = new SearchContext();
 
@@ -160,459 +176,342 @@ public class KafkaSearchController {
         ctx.maxResults = "last".equalsIgnoreCase(ctx.mode) ? 1 : Integer.MAX_VALUE;
 
         ctx.requestId = request.getRequestId();
-        System.out.println(" [prepareSearch] Using provided requestId: " + ctx.requestId);
-
+        logger.debug("Using provided requestId: {}", ctx.requestId);
 
         ctx.futures = new ArrayList<>();
         activeRequests.put(ctx.requestId, ctx.futures);
 
         int safePollRecords = request.getPollRecords() > 0 ? request.getPollRecords() : 500;
         int safeTimeoutMs = request.getTimeoutMs() > 0 ? request.getTimeoutMs() : 30000;
+        logger.debug("Using safePollRecords: {}, safeTimeoutMs: {}", safePollRecords, safeTimeoutMs);
+
         ctx.props = getKafkaProps(request.getKafkaAddress(), safePollRecords, safeTimeoutMs);
-        ctx.consumer = new KafkaConsumer<>(ctx.props);
 
-        System.out.println(" [prepareSearch] Kafka consumer created. PollRecords=" + safePollRecords + ", TimeoutMs=" + safeTimeoutMs);
-
-        List<PartitionInfo> partitionInfos = ctx.consumer.partitionsFor(ctx.topic);
-        if (partitionInfos == null || partitionInfos.isEmpty()) {
-            System.out.println(" [prepareSearch] No partitions found for topic: " + ctx.topic);
-            ctx.partitions = null;
-            return ctx;
+        try {
+            logger.debug("Creating Kafka consumer with timeout configs...");
+            ctx.consumer = new KafkaConsumer<>(ctx.props);
+            logger.info("Kafka consumer created successfully");
+        } catch (Exception e) {
+            logger.error("Failed to create Kafka consumer", e);
+            throw new RuntimeException("Failed to create Kafka consumer", e);
         }
 
-        ctx.partitions = new ArrayList<>();
-        for (PartitionInfo p : partitionInfos) {
-            ctx.partitions.add(new TopicPartition(p.topic(), p.partition()));
+        try {
+            logger.debug("Getting partitions for topic: {}", ctx.topic);
+            List<PartitionInfo> partitionInfos = ctx.consumer.partitionsFor(ctx.topic);
+            if (partitionInfos == null || partitionInfos.isEmpty()) {
+                logger.warn("No partitions found for topic: {}", ctx.topic);
+                ctx.partitions = null;
+                return ctx;
+            }
+
+            ctx.partitions = new ArrayList<>();
+            for (PartitionInfo p : partitionInfos) {
+                ctx.partitions.add(new TopicPartition(p.topic(), p.partition()));
+            }
+
+            logger.info("Found {} partitions for topic: {}", ctx.partitions.size(), ctx.topic);
+
+            logger.debug("Assigning partitions and fetching offset info...");
+            ctx.consumer.assign(ctx.partitions);
+            ctx.beginningOffsets = ctx.consumer.beginningOffsets(ctx.partitions);
+            ctx.endOffsets = ctx.consumer.endOffsets(ctx.partitions);
+
+            logger.info("Offset info fetched successfully. Assigned partitions: {}", ctx.partitions);
+            logger.info("Active timeout configs - request.timeout.ms: {}, session.timeout.ms: {}, default.api.timeout.ms: {}, max.poll.interval.ms: {}",
+                    ctx.props.getProperty("request.timeout.ms"), ctx.props.getProperty("session.timeout.ms"),
+                    ctx.props.getProperty("default.api.timeout.ms"), ctx.props.getProperty("max.poll.interval.ms"));
+
+        } catch (Exception e) {
+            logger.error("Error during search context preparation for topic: {}", ctx.topic, e);
+            throw new RuntimeException("Failed to prepare search context", e);
         }
-
-        System.out.println(" [prepareSearch] Found " + ctx.partitions.size() + " partitions for topic: " + ctx.topic);
-
-        ctx.consumer.assign(ctx.partitions);
-        ctx.beginningOffsets = ctx.consumer.beginningOffsets(ctx.partitions);
-        ctx.endOffsets = ctx.consumer.endOffsets(ctx.partitions);
-
-        System.out.println(" [prepareSearch] Offset info fetched. Assigned partitions: " + ctx.partitions);
-
-        System.out.println(" [prepareSearch] Consumer timeout configs:");
-        System.out.println("  request.timeout.ms       = " + ctx.props.getProperty("request.timeout.ms"));
-        System.out.println("  session.timeout.ms       = " + ctx.props.getProperty("session.timeout.ms"));
-        System.out.println("  default.api.timeout.ms   = " + ctx.props.getProperty("default.api.timeout.ms"));
-        System.out.println("  max.poll.interval.ms     = " + ctx.props.getProperty("max.poll.interval.ms"));
 
         return ctx;
     }
 
 
-
     @PostMapping
     public List<String> JSONSearch(@RequestBody SearchRequest request) throws InterruptedException, ExecutionException {
-        System.out.println("[JSONSearch] Search request received for topic: " + request.getTopic());
+        logger.info("JSONSearch request received for topic: {}, mode: {}", request.getTopic(), request.getMode());
+
 
         SearchContext ctx = prepareSearch(request);
         if (ctx.partitions == null) {
-            System.out.println("[JSONSearch] Topic not found: " + request.getTopic());
+            logger.warn("Topic not found: {}", request.getTopic());
             return Collections.singletonList("Topic not found.");
         }
 
+        ExecutorService executor;
         if ("last".equalsIgnoreCase(ctx.mode)) {
-
-            System.out.println("[JSONSearch] Mode 'last' with executor.");
-
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
-            Callable<List<String>> task = () -> searchLastRecordJSON(
-                    ctx.topic, ctx.partitions, ctx.props, request.getFilters()
-            );
-
+            logger.info("Executing 'last' mode with single thread executor");
+            executor = Executors.newSingleThreadExecutor();
+            Callable<List<String>> task = () -> searchLastRecordJSON(ctx.topic, ctx.partitions, ctx.props, request.getFilters());
             ctx.futures.add(executor.submit(task));
 
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[JSONSearch] Max result limit reached. Truncating results.");
-                    break;
-                }
-            }
-            executor.shutdownNow();
-            return results;
-
-        }
-
-        if ("copy".equalsIgnoreCase(ctx.mode)) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
+        } else if ("copy".equalsIgnoreCase(ctx.mode)) {
+            logger.info("Executing 'copy' mode with single thread executor");
+            executor = Executors.newSingleThreadExecutor();
             Callable<List<String>> task = () -> copyMode(request);
             ctx.futures.add(executor.submit(task));
 
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[JSONSearch] Max result limit reached. Truncating results.");
-                    break;
-                }
-            }
-            executor.shutdownNow();
-            return results;
-        }
-
-        if ("date".equalsIgnoreCase(ctx.mode)) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
+        } else if ("date".equalsIgnoreCase(ctx.mode)) {
+            logger.info("Executing 'date' mode with single thread executor");
+            executor = Executors.newSingleThreadExecutor();
             Callable<List<String>> task = () -> DateMode(request);
             ctx.futures.add(executor.submit(task));
 
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[JSONSearch] Max result limit reached. Truncating results.");
-                    break;
+        } else {
+            ctx.consumer.assign(ctx.partitions);
+            Map<TopicPartition, Long> beginningOffsets = ctx.consumer.beginningOffsets(ctx.partitions);
+            Map<TopicPartition, Long> endOffsets = ctx.consumer.endOffsets(ctx.partitions);
+
+            int threads = request.getThreads() > 0 ? request.getThreads() : 4;
+            logger.info("Starting parallel JSON processing with {} threads for {} partitions", threads, ctx.partitions.size());
+
+            executor = Executors.newFixedThreadPool(threads);
+
+            for (TopicPartition tp : ctx.partitions) {
+
+                long start = beginningOffsets.get(tp);
+                long end = endOffsets.get(tp);
+                if (end < start) {
+                    logger.debug("Skipping partition {} - end offset {} is less than start offset {}", tp.partition(), end, start);
+                    continue;
                 }
-            }
-            executor.shutdownNow();
-            return results;
-        }
 
-        ctx.consumer.assign(ctx.partitions);
-        Map<TopicPartition, Long> beginningOffsets = ctx.consumer.beginningOffsets(ctx.partitions);
-        Map<TopicPartition, Long> endOffsets = ctx.consumer.endOffsets(ctx.partitions);
+                if ("manual".equalsIgnoreCase(ctx.mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                    start = request.getStartOffset() >= start ? request.getStartOffset() : start;
+                    end = request.getEndOffset() <= end ? request.getEndOffset() : end;
+                    logger.info("Manual mode active for partition {}. Range adjusted: start={}, end={}", tp.partition(), start, end);
+                }
 
-        int threads = request.getThreads() > 0 ? request.getThreads() : 4;
-        System.out.println("[JSONSearch] Starting parallel processing with " + threads + " threads.");
+                if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
+                    start = Math.max(end - ctx.lastN + 1, start);
+                    logger.info("lastN mode active for partition {}. New start offset: {}", tp.partition(), start);
+                }
 
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
+                long rangeSize = Math.max(1, (end - start + 1) / threads);
+                logger.debug("Partition {} processing - start={}, end={}, rangeSize={}", tp.partition(), start, end, rangeSize);
 
-        for (TopicPartition tp : ctx.partitions) {
+                for (int i = 0; i < threads; i++) {
+                    long partStart = start + i * rangeSize;
+                    long partEnd = (i == threads - 1) ? end : Math.min(partStart + rangeSize - 1, end);
 
-            long start = beginningOffsets.get(tp);
-            long end = endOffsets.get(tp);
-            if (end < start) continue;
-
-            if ("manual".equalsIgnoreCase(ctx.mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
-                start = request.getStartOffset() >= start ? request.getStartOffset() : start;
-                end = request.getEndOffset() <= end ? request.getEndOffset() : end;
-                System.out.println("[JSONSearch] Manual mode active. Range adjusted: start=" + start + ", end=" + end);
-            }
-
-            if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
-                start = Math.max(end - ctx.lastN + 1, start);
-                System.out.println("[JSONSearch] lastN mode active. New start offset: " + start);
-            }
-
-            long rangeSize = Math.max(1, (end - start + 1) / threads);
-            System.out.println("[JSONSearch] Partition " + tp.partition() + " - start=" + start + ", end=" + end + ", rangeSize=" + rangeSize);
-
-            for (int i = 0; i < threads; i++) {
-                long partStart = start + i * rangeSize;
-                long partEnd = (i == threads - 1) ? end : Math.min(partStart + rangeSize - 1, end);
-
-                System.out.println("[JSONSearch] Submitting task for partition " + tp.partition() + ", range [" + partStart + " - " + partEnd + "]");
-                Callable<List<String>> task = () -> consumePartitionRangeJSON(
-                        ctx.topic, tp.partition(), partStart, partEnd, ctx.props, request.getFilters(), ctx.maxResults
-                );
-                ctx.futures.add(executor.submit(task));
+                    logger.debug("Submitting JSON task for partition {}, thread {}, range [{} - {}]", tp.partition(), i, partStart, partEnd);
+                    Callable<List<String>> task = () -> consumePartitionRangeJSON(
+                            ctx.topic, tp.partition(), partStart, partEnd, ctx.props, request.getFilters(), ctx.maxResults
+                    );
+                    ctx.futures.add(executor.submit(task));
+                }
             }
         }
 
         List<String> results = new ArrayList<>();
         for (Future<List<String>> f : ctx.futures) {
-            List<String> partial = f.get();
-            results.addAll(partial);
-            if (results.size() >= ctx.maxResults) {
-                System.out.println("[JSONSearch] Max result limit reached. Truncating results.");
-                break;
+            try {
+                List<String> partial = f.get();
+                results.addAll(partial);
+                if (results.size() >= ctx.maxResults) {
+                    logger.debug("Max result limit reached in JSON processing. Truncating results.");
+                    break;
+                }
+            } catch (Exception e) {
+                logger.error("Error getting results from future in parallel JSON processing", e);
             }
         }
 
-        executor.shutdownNow();
-        System.out.println("[JSONSearch] Search completed. Total results: " + results.size());
+        if (executor != null) {
+            executor.shutdownNow();
+        }
+        logger.info("JSONSearch parallel processing completed. Total results: {}", results.size());
 
         return results.size() > ctx.maxResults ? results.subList(0, ctx.maxResults) : results;
     }
 
-
-
-
-
-
     @PostMapping("/simple-string-search")
     public List<String> stringSearch(@RequestBody SearchRequest request) throws InterruptedException, ExecutionException {
-        System.out.println("[stringSearch] Search request received for topic: " + request.getTopic());
+        logger.info("stringSearch request received for topic: {}, mode: {}", request.getTopic(), request.getMode());
 
         List<String> rawFilters = request.getRawFilters();
         SearchContext ctx = prepareSearch(request);
-
         if (ctx.partitions == null) {
-            System.out.println("[stringSearch] Topic not found: " + request.getTopic());
+            logger.warn("Topic not found in stringSearch: {}", request.getTopic());
             return Collections.singletonList("Topic not found.");
         }
 
+        ExecutorService executor;
         if ("last".equalsIgnoreCase(ctx.mode)) {
-
-            System.out.println("[stringSearch] Mode 'last' with executor.");
-
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
-            Callable<List<String>> task = () -> searchLastRecordString(
-                    ctx.topic, ctx.partitions, ctx.props, rawFilters
-            );
-
+            logger.info("Executing 'last' mode with single thread executor in stringSearch");
+            executor = Executors.newSingleThreadExecutor();
+            Callable<List<String>> task = () -> searchLastRecordString(ctx.topic, ctx.partitions, ctx.props, rawFilters);
             ctx.futures.add(executor.submit(task));
 
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[stringSearch] Max result limit reached. Truncating results.");
-                    break;
-                }
-            }
-            executor.shutdownNow();
-            return results;
-
-        }
-
-        if ("copy".equalsIgnoreCase(ctx.mode)) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
+        } else if ("copy".equalsIgnoreCase(ctx.mode)) {
+            logger.info("Executing 'copy' mode with single thread executor in stringSearch");
+            executor = Executors.newSingleThreadExecutor();
             Callable<List<String>> task = () -> copyMode(request);
             ctx.futures.add(executor.submit(task));
 
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[stringSearch] Max result limit reached. Truncating results.");
-                    break;
-                }
-            }
-            executor.shutdownNow();
-            return results;
-        }
-
-        if ("date".equalsIgnoreCase(ctx.mode)) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
+        } else if ("date".equalsIgnoreCase(ctx.mode)) {
+            logger.info("Executing 'date' mode with single thread executor in stringSearch");
+            executor = Executors.newSingleThreadExecutor();
             Callable<List<String>> task = () -> DateMode(request);
             ctx.futures.add(executor.submit(task));
 
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[stringSearch] Max result limit reached. Truncating results.");
-                    break;
+        } else {
+            int threads = request.getThreads() > 0 ? request.getThreads() : 4;
+            logger.info("Starting parallel string search with {} threads for {} partitions", threads, ctx.partitions.size());
+            executor = Executors.newFixedThreadPool(threads);
+
+            for (TopicPartition tp : ctx.partitions) {
+                long start = ctx.beginningOffsets.get(tp);
+                long end = ctx.endOffsets.get(tp);
+
+                if ("manual".equalsIgnoreCase(ctx.mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                    start = Math.max(start, request.getStartOffset());
+                    end = Math.min(end, request.getEndOffset());
                 }
-            }
-            executor.shutdownNow();
-            return results;
-        }
 
-        int threads = request.getThreads() > 0 ? request.getThreads() : 4;
-        System.out.println("[stringSearch] Starting search with " + threads + " threads.");
+                if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
+                    start = Math.max(end - ctx.lastN + 1, start);
+                }
 
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
+                long rangeSize = Math.max(1, (end - start + 1) / threads);
+                for (int i = 0; i < threads; i++) {
+                    long partStart = start + i * rangeSize;
+                    long partEnd = (i == threads - 1) ? end : Math.min(partStart + rangeSize - 1, end);
 
-        for (TopicPartition tp : ctx.partitions) {
-            long start = ctx.beginningOffsets.get(tp);
-            long end = ctx.endOffsets.get(tp);
-            if (end < start) continue;
-
-            if ("manual".equalsIgnoreCase(ctx.mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
-                start = request.getStartOffset() >= start ? request.getStartOffset() : start;
-                end = request.getEndOffset() <= end ? request.getEndOffset() : end;
-                System.out.println("[stringSearch] Manual offset range set for partition " + tp.partition() + ": start=" + start + ", end=" + end);
-            }
-
-            if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
-                start = Math.max(end - ctx.lastN + 1, start);
-                System.out.println("[stringSearch] lastN mode active. Adjusted start offset for partition " + tp.partition() + ": " + start);
-            }
-
-            long rangeSize = Math.max(1, (end - start + 1) / threads);
-            System.out.println("[stringSearch] Partition " + tp.partition() + " - start=" + start + ", end=" + end + ", rangeSize=" + rangeSize);
-
-            for (int i = 0; i < threads; i++) {
-                long partStart = start + i * rangeSize;
-                long partEnd = (i == threads - 1) ? end : Math.min(partStart + rangeSize - 1, end);
-
-                System.out.println("[stringSearch] Submitting task for partition " + tp.partition() + ", range [" + partStart + " - " + partEnd + "]");
-                Callable<List<String>> task = () -> consumePartitionRangeString(
-                        ctx.topic, tp.partition(), partStart, partEnd, ctx.props, rawFilters, ctx.maxResults
-                );
-                ctx.futures.add(executor.submit(task));
+                    Callable<List<String>> task = () -> consumePartitionRangeString(
+                            ctx.topic, tp.partition(), partStart, partEnd, ctx.props, rawFilters, ctx.maxResults
+                    );
+                    ctx.futures.add(executor.submit(task));
+                }
             }
         }
 
         List<String> results = new ArrayList<>();
         for (Future<List<String>> f : ctx.futures) {
-            results.addAll(f.get());
-            if (results.size() >= ctx.maxResults) {
-                System.out.println("[stringSearch] Max results reached. Stopping collection.");
-                break;
+            try {
+                results.addAll(f.get());
+                if (results.size() >= ctx.maxResults) {
+                    logger.debug("Max result limit reached in stringSearch. Truncating results.");
+                    break;
+                }
+            } catch (Exception e) {
+                logger.error("Error in stringSearch future processing", e);
             }
         }
 
-        executor.shutdownNow();
-        System.out.println("[stringSearch] Search completed. Total results: " + results.size());
+        if (executor != null) {
+            executor.shutdownNow();
+        }
 
+        logger.info("stringSearch completed with {} results", results.size());
         return results.size() > ctx.maxResults ? results.subList(0, ctx.maxResults) : results;
     }
 
 
     @PostMapping("/pattern-search")
     public List<String> patternSearch(@RequestBody SearchRequest request) throws InterruptedException, ExecutionException {
-        System.out.println("[patternSearch] Search request received for topic: " + request.getTopic());
+        logger.info("patternSearch request received for topic: {}, mode: {}", request.getTopic(), request.getMode());
 
-        List<String> patternStrings = request.getRawFilters();
         List<Pattern> patterns = new ArrayList<>();
-        for (String p : patternStrings) {
-            patterns.add(Pattern.compile(p, Pattern.CASE_INSENSITIVE));
+        for (String p : request.getRawFilters()) {
+            try {
+                patterns.add(Pattern.compile(p, Pattern.CASE_INSENSITIVE));
+            } catch (Exception e) {
+                logger.error("Invalid regex pattern: {}", p, e);
+                return Collections.singletonList("Invalid regex: " + p);
+            }
         }
-        System.out.println("[patternSearch] Compiled " + patterns.size() + " regex pattern(s).");
 
         SearchContext ctx = prepareSearch(request);
         if (ctx.partitions == null) {
-            System.out.println("[patternSearch] Topic not found: " + request.getTopic());
+            logger.warn("Topic not found in patternSearch: {}", request.getTopic());
             return Collections.singletonList("Topic not found.");
         }
 
+        ExecutorService executor;
         if ("last".equalsIgnoreCase(ctx.mode)) {
-
-            System.out.println("[patternSearch] Mode 'last' with executor.");
-
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
-            Callable<List<String>> task = () -> searchLastRecordPattern(
-                    ctx.topic, ctx.partitions, ctx.props, patterns
-            );
-
+            logger.info("Executing 'last' mode with single thread executor in patternSearch");
+            executor = Executors.newSingleThreadExecutor();
+            Callable<List<String>> task = () -> searchLastRecordPattern(ctx.topic, ctx.partitions, ctx.props, patterns);
             ctx.futures.add(executor.submit(task));
-
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[patternSearch] Max result limit reached. Truncating results.");
-                    break;
-                }
-            }
-            executor.shutdownNow();
-            return results;
-
-        }
-
-        if ("copy".equalsIgnoreCase(ctx.mode)) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
+        } else if ("copy".equalsIgnoreCase(ctx.mode)) {
+            logger.info("Executing 'copy' mode with single thread executor in patternSearch");
+            executor = Executors.newSingleThreadExecutor();
             Callable<List<String>> task = () -> copyMode(request);
             ctx.futures.add(executor.submit(task));
-
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[patternSearch] Max result limit reached. Truncating results.");
-                    break;
-                }
-            }
-            executor.shutdownNow();
-            return results;
-        }
-
-        if ("date".equalsIgnoreCase(ctx.mode)) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-
+        } else if ("date".equalsIgnoreCase(ctx.mode)) {
+            logger.info("Executing 'date' mode with single thread executor in patternSearch");
+            executor = Executors.newSingleThreadExecutor();
             Callable<List<String>> task = () -> DateMode(request);
             ctx.futures.add(executor.submit(task));
+        } else {
+            int threads = request.getThreads() > 0 ? request.getThreads() : 4;
+            logger.info("Starting parallel pattern search with {} threads for {} partitions", threads, ctx.partitions.size());
+            executor = Executors.newFixedThreadPool(threads);
 
-            List<String> results = new ArrayList<>();
-            for (Future<List<String>> f : ctx.futures) {
-                List<String> partial = f.get();
-                results.addAll(partial);
-                if (results.size() >= ctx.maxResults) {
-                    System.out.println("[patternSearch] Max result limit reached. Truncating results.");
-                    break;
+            for (TopicPartition tp : ctx.partitions) {
+                long start = ctx.beginningOffsets.get(tp);
+                long end = ctx.endOffsets.get(tp);
+
+                if ("manual".equalsIgnoreCase(ctx.mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
+                    start = Math.max(start, request.getStartOffset());
+                    end = Math.min(end, request.getEndOffset());
                 }
-            }
-            executor.shutdownNow();
-            return results;
-        }
 
-        int threads = request.getThreads() > 0 ? request.getThreads() : 4;
-        System.out.println("[patternSearch] Starting search with " + threads + " threads.");
+                if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
+                    start = Math.max(end - ctx.lastN + 1, start);
+                }
 
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
+                long rangeSize = Math.max(1, (end - start + 1) / threads);
+                for (int i = 0; i < threads; i++) {
+                    long partStart = start + i * rangeSize;
+                    long partEnd = (i == threads - 1) ? end : Math.min(partStart + rangeSize - 1, end);
 
-        for (TopicPartition tp : ctx.partitions) {
-            long start = ctx.beginningOffsets.get(tp);
-            long end = ctx.endOffsets.get(tp);
-            if (end < start) continue;
-
-            if ("manual".equalsIgnoreCase(ctx.mode) && request.getStartOffset() != null && request.getEndOffset() != null) {
-                start = request.getStartOffset() >= start ? request.getStartOffset() : start;
-                end = request.getEndOffset() <= end ? request.getEndOffset() : end;
-                System.out.println("[patternSearch] Manual offset range set for partition " + tp.partition() + ": start=" + start + ", end=" + end);
-            }
-
-            if ("lastN".equalsIgnoreCase(ctx.mode) && ctx.lastN != null) {
-                start = Math.max(end - ctx.lastN + 1, start);
-                System.out.println("[patternSearch] lastN mode active. Adjusted start offset for partition " + tp.partition() + ": " + start);
-            }
-
-            long rangeSize = Math.max(1, (end - start + 1) / threads);
-            System.out.println("[patternSearch] Partition " + tp.partition() + " - start=" + start + ", end=" + end + ", rangeSize=" + rangeSize);
-
-            for (int i = 0; i < threads; i++) {
-                long partStart = start + i * rangeSize;
-                long partEnd = (i == threads - 1) ? end : Math.min(partStart + rangeSize - 1, end);
-
-                System.out.println("[patternSearch] Submitting task for partition " + tp.partition() + ", range [" + partStart + " - " + partEnd + "]");
-                final List<Pattern> finalPatterns = patterns;
-                Callable<List<String>> task = () -> consumePartitionRangePattern(
-                        ctx.topic, tp.partition(), partStart, partEnd, ctx.props, finalPatterns, ctx.maxResults
-                );
-                ctx.futures.add(executor.submit(task));
+                    final List<Pattern> finalPatterns = patterns;
+                    Callable<List<String>> task = () -> consumePartitionRangePattern(
+                            ctx.topic, tp.partition(), partStart, partEnd, ctx.props, finalPatterns, ctx.maxResults
+                    );
+                    ctx.futures.add(executor.submit(task));
+                }
             }
         }
 
         List<String> results = new ArrayList<>();
         for (Future<List<String>> f : ctx.futures) {
-            results.addAll(f.get());
-            if (results.size() >= ctx.maxResults) {
-                System.out.println("[patternSearch] Max results reached. Truncating result list.");
-                break;
+            try {
+                results.addAll(f.get());
+                if (results.size() >= ctx.maxResults) {
+                    logger.debug("Max result limit reached in patternSearch. Truncating results.");
+                    break;
+                }
+            } catch (Exception e) {
+                logger.error("Error in patternSearch future processing", e);
             }
         }
 
-        executor.shutdownNow();
-        System.out.println("[patternSearch] Search completed. Total results: " + results.size());
+        if (executor != null) {
+            executor.shutdownNow();
+        }
 
+        logger.info("patternSearch completed with {} results", results.size());
         return results.size() > ctx.maxResults ? results.subList(0, ctx.maxResults) : results;
     }
-
 
 
     private List<String> searchLastRecordJSON(String topic,
                                               List<TopicPartition> partitions,
                                               Properties props,
                                               Map<String, String> filters) {
-        boolean isCancelled = false;
         int stepSize = 500;
-        System.out.println("[searchLastRecordJSON] Starting last record search for topic: " + topic);
-        System.out.println("[searchLastRecordJSON] Filters applied: " + filters);
+        logger.info("Starting searchLastRecordJSON for topic: {}, stepSize: {}", topic, stepSize);
+        logger.debug("Filters applied: {}", filters);
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            logger.debug("Consumer created, fetching offset information...");
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
 
@@ -621,27 +520,37 @@ public class KafkaSearchController {
                 long end = endOffsets.get(tp);
                 long fromOffset = end;
 
-                System.out.println("[searchLastRecordJSON] Searching in partition " + tp.partition() + " from offset " + start + " to " + end);
+                logger.info("Searching partition {} from offset {} to {}", tp.partition(), start, end);
 
                 while (fromOffset > start) {
                     long batchStart = Math.max(start, fromOffset - stepSize);
-                    System.out.println("[searchLastRecordJSON] Polling range [" + batchStart + " - " + (fromOffset - 1) + "]");
+                    logger.debug("Polling range [{} - {}] with timeout from props", batchStart, fromOffset - 1);
 
                     consumer.assign(Collections.singletonList(tp));
                     consumer.seek(tp, batchStart);
 
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                    long pollTimeoutMs = 5000;
+                    logger.debug("Executing consumer.poll() with timeout: {}ms", pollTimeoutMs);
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeoutMs));
+
+                    if (records.isEmpty()) {
+                        logger.debug("Poll returned no records for range [{} - {}]", batchStart, fromOffset - 1);
+                    } else {
+                        logger.debug("Poll returned {} records", records.count());
+                    }
+
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
                         if (record.offset() >= end) continue;
                         if (matchesFiltersJSON(record.value(), filters)) {
                             matchedRecords.add(record);
+                            logger.debug("Record at offset {} matches filters", record.offset());
                         }
                     }
 
                     if (!matchedRecords.isEmpty()) {
-                        System.out.println("[searchLastRecordJSON] Found " + matchedRecords.size() + " matching record(s). Returning the latest one.");
+                        logger.info("Found {} matching record(s) in partition {}. Returning the latest one.", matchedRecords.size(), tp.partition());
                         ConsumerRecord<String, String> maxOffsetRecord = Collections.max(
                                 matchedRecords,
                                 Comparator.comparingLong(ConsumerRecord::offset)
@@ -651,9 +560,10 @@ public class KafkaSearchController {
                             ObjectNode resultNode = objectMapper.createObjectNode();
                             resultNode.put("offset", maxOffsetRecord.offset());
                             resultNode.set("value", valueNode);
+                            logger.info("Returning JSON result for offset: {}", maxOffsetRecord.offset());
                             return List.of(objectMapper.writeValueAsString(resultNode));
                         } catch (Exception e) {
-                            System.out.println("[searchLastRecordJSON] Failed to parse JSON. Returning raw value.");
+                            logger.warn("Failed to parse JSON for offset: {}. Returning raw value.", maxOffsetRecord.offset(), e);
                             return List.of(String.format("{\"offset\": %d, \"value\": \"%s\"}",
                                     maxOffsetRecord.offset(), maxOffsetRecord.value()));
                         }
@@ -662,17 +572,15 @@ public class KafkaSearchController {
                     fromOffset = batchStart;
                 }
 
-                System.out.println("[searchLastRecordJSON] No matching records found in partition " + tp.partition());
+                logger.debug("No matching records found in partition {}", tp.partition());
             }
         } catch (Exception e) {
-            System.out.println("[searchLastRecordJSON] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in searchLastRecordJSON for topic: {}", topic, e);
         }
 
-        System.out.println("[searchLastRecordJSON] Search finished. No matching records found.");
+        logger.info("searchLastRecordJSON finished. No matching records found.");
         return List.of();
     }
-
 
 
     private List<String> searchLastRecordString(String topic,
@@ -680,10 +588,11 @@ public class KafkaSearchController {
                                                 Properties props,
                                                 List<String> rawFilters) {
         int stepSize = 500;
-        System.out.println("[searchLastRecordString] Starting last record search for topic: " + topic);
-        System.out.println("[searchLastRecordString] Filters applied: " + rawFilters);
+        logger.info("Starting searchLastRecordString for topic: {}, stepSize: {}", topic, stepSize);
+        logger.debug("Filters applied: {}", rawFilters);
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            logger.debug("Consumer created, fetching offset information...");
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
 
@@ -692,31 +601,42 @@ public class KafkaSearchController {
                 long end = endOffsets.get(tp);
                 long fromOffset = end;
 
-                System.out.println("[searchLastRecordString] Searching in partition " + tp.partition() + " from offset " + start + " to " + end);
+                logger.info("Searching partition {} from offset {} to {}", tp.partition(), start, end);
 
                 while (fromOffset > start) {
                     long batchStart = Math.max(start, fromOffset - stepSize);
-                    System.out.println("[searchLastRecordString] Polling range [" + batchStart + " - " + (fromOffset - 1) + "]");
+                    logger.debug("Polling range [{} - {}]", batchStart, fromOffset - 1);
 
                     consumer.assign(Collections.singletonList(tp));
                     consumer.seek(tp, batchStart);
 
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                    long pollTimeoutMs = 5000;
+                    logger.debug("Executing consumer.poll() with timeout: {}ms", pollTimeoutMs);
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeoutMs));
+
+                    if (records.isEmpty()) {
+                        logger.debug("Poll returned no records for range [{} - {}]", batchStart, fromOffset - 1);
+                    } else {
+                        logger.debug("Poll returned {} records", records.count());
+                    }
+
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
                         if (record.offset() >= end) continue;
                         if (matchesFiltersString(record.value(), rawFilters)) {
                             matchedRecords.add(record);
+                            logger.debug("Record at offset {} matches string filters", record.offset());
                         }
                     }
 
                     if (!matchedRecords.isEmpty()) {
-                        System.out.println("[searchLastRecordString] Found " + matchedRecords.size() + " matching record(s). Returning the latest one.");
+                        logger.info("Found {} matching record(s) in partition {}. Returning the latest one.", matchedRecords.size(), tp.partition());
                         ConsumerRecord<String, String> maxOffsetRecord = Collections.max(
                                 matchedRecords,
                                 Comparator.comparingLong(ConsumerRecord::offset)
                         );
+                        logger.info("Returning string result for offset: {}", maxOffsetRecord.offset());
                         return List.of(String.format("{\"offset\": %d, \"value\": \"%s\"}",
                                 maxOffsetRecord.offset(), maxOffsetRecord.value()));
                     }
@@ -724,14 +644,13 @@ public class KafkaSearchController {
                     fromOffset = batchStart;
                 }
 
-                System.out.println("[searchLastRecordString] No matching records found in partition " + tp.partition());
+                logger.debug("No matching records found in partition {}", tp.partition());
             }
         } catch (Exception e) {
-            System.out.println("[searchLastRecordString] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in searchLastRecordString for topic: {}", topic, e);
         }
 
-        System.out.println("[searchLastRecordString] Search finished. No matching records found.");
+        logger.info("searchLastRecordString finished. No matching records found.");
         return List.of();
     }
 
@@ -741,10 +660,10 @@ public class KafkaSearchController {
                                                  Properties props,
                                                  List<Pattern> patterns) {
         int stepSize = 500;
-        System.out.println("[searchLastRecordPattern] Starting last record pattern search for topic: " + topic);
-        System.out.println("[searchLastRecordPattern] Total compiled patterns: " + patterns.size());
+        logger.info("Starting searchLastRecordPattern for topic: {}, stepSize: {}, patterns count: {}", topic, stepSize, patterns.size());
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            logger.debug("Consumer created, fetching offset information...");
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
             Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
 
@@ -753,16 +672,25 @@ public class KafkaSearchController {
                 long end = endOffsets.get(tp);
                 long fromOffset = end;
 
-                System.out.println("[searchLastRecordPattern] Searching in partition " + tp.partition() + " from offset " + start + " to " + end);
+                logger.info("Searching partition {} from offset {} to {}", tp.partition(), start, end);
 
                 while (fromOffset > start) {
                     long batchStart = Math.max(start, fromOffset - stepSize);
-                    System.out.println("[searchLastRecordPattern] Polling range [" + batchStart + " - " + (fromOffset - 1) + "]");
+                    logger.debug("Polling range [{} - {}]", batchStart, fromOffset - 1);
 
                     consumer.assign(Collections.singletonList(tp));
                     consumer.seek(tp, batchStart);
 
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                    long pollTimeoutMs = 5000;
+                    logger.debug("Executing consumer.poll() with timeout: {}ms", pollTimeoutMs);
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeoutMs));
+
+                    if (records.isEmpty()) {
+                        logger.debug("Poll returned no records for range [{} - {}]", batchStart, fromOffset - 1);
+                    } else {
+                        logger.debug("Poll returned {} records", records.count());
+                    }
+
                     List<ConsumerRecord<String, String>> matchedRecords = new ArrayList<>();
 
                     for (ConsumerRecord<String, String> record : records.records(tp)) {
@@ -770,15 +698,17 @@ public class KafkaSearchController {
 
                         if (matchesPatterns(record.value(), patterns)) {
                             matchedRecords.add(record);
+                            logger.debug("Record at offset {} matches pattern filters", record.offset());
                         }
                     }
 
                     if (!matchedRecords.isEmpty()) {
-                        System.out.println("[searchLastRecordPattern] Found " + matchedRecords.size() + " matching record(s). Returning the latest one.");
+                        logger.info("Found {} matching record(s) in partition {}. Returning the latest one.", matchedRecords.size(), tp.partition());
                         ConsumerRecord<String, String> maxOffsetRecord = Collections.max(
                                 matchedRecords,
                                 Comparator.comparingLong(ConsumerRecord::offset)
                         );
+                        logger.info("Returning pattern result for offset: {}", maxOffsetRecord.offset());
                         return List.of(String.format("{\"offset\": %d, \"value\": \"%s\"}",
                                 maxOffsetRecord.offset(), maxOffsetRecord.value()));
                     }
@@ -786,28 +716,28 @@ public class KafkaSearchController {
                     fromOffset = batchStart;
                 }
 
-                System.out.println("[searchLastRecordPattern] No matching records found in partition " + tp.partition());
+                logger.debug("No matching records found in partition {}", tp.partition());
             }
         } catch (Exception e) {
-            System.out.println("[searchLastRecordPattern] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in searchLastRecordPattern for topic: {}", topic, e);
         }
 
-        System.out.println("[searchLastRecordPattern] Search finished. No matching records found.");
+        logger.info("searchLastRecordPattern finished. No matching records found.");
         return List.of();
     }
 
     private List<String> consumePartitionRangeJSON(String topic, int partition, long startOffset, long endOffset,
                                                    Properties props, Map<String, String> filters, int maxResults) {
-        System.out.println("[consumePartitionRangeJSON] Starting JSON consumption for topic=" + topic +
-                ", partition=" + partition + ", offsets=[" + startOffset + " - " + endOffset + "], maxResults=" + maxResults);
-        System.out.println("[consumePartitionRangeJSON] Filters: " + filters);
+        logger.info("Starting consumePartitionRangeJSON - topic: {}, partition: {}, offsets: [{}-{}], maxResults: {}",
+                topic, partition, startOffset, endOffset, maxResults);
+        logger.debug("JSON filters: {}", filters);
 
         List<String> foundRecords = new ArrayList<>();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
             consumer.seek(tp, startOffset);
+            logger.debug("Consumer assigned to partition {} and seeked to offset {}", partition, startOffset);
 
             long currentOffset = startOffset;
 
@@ -816,15 +746,21 @@ public class KafkaSearchController {
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
                         : 30000;
 
+                logger.debug("Polling with timeout: {}ms at offset: {}", pollTimeout, currentOffset);
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
+
                 if (records.isEmpty()) {
-                    System.out.println("[consumePartitionRangeJSON] No records received at offset " + currentOffset);
+                    logger.debug("No records received at offset {}, breaking consumption", currentOffset);
                     break;
                 }
+                logger.debug("Received {} records from poll", records.count());
 
-                if(!Thread.currentThread().isInterrupted()){
+                if (!Thread.currentThread().isInterrupted()) {
                     for (ConsumerRecord<String, String> record : records) {
-                        if (record.offset() > endOffset) break;
+                        if (record.offset() > endOffset) {
+                            logger.debug("Record offset {} exceeds end offset {}, breaking", record.offset(), endOffset);
+                            break;
+                        }
 
                         if (matchesFiltersJSON(record.value(), filters)) {
                             try {
@@ -833,43 +769,46 @@ public class KafkaSearchController {
                                 resultNode.put("offset", record.offset());
                                 resultNode.set("value", valueNode);
                                 foundRecords.add(objectMapper.writeValueAsString(resultNode));
-                                System.out.println("[consumePartitionRangeJSON] Match found at offset " + record.offset());
+                                logger.debug("JSON match found at offset {}", record.offset());
                             } catch (Exception e) {
-                                System.out.println("[consumePartitionRangeJSON] Failed to parse JSON at offset " + record.offset());
+                                logger.warn("Failed to parse JSON at offset {}, using raw value", record.offset(), e);
                                 foundRecords.add(String.format("{\"offset\": %d, \"value\": \"%s\"}",
                                         record.offset(), record.value()));
                             }
 
                             if (foundRecords.size() >= maxResults) {
-                                System.out.println("[consumePartitionRangeJSON] Reached maxResults limit (" + maxResults + ")");
+                                logger.debug("Reached maxResults limit ({})", maxResults);
                                 break;
                             }
                         }
                         currentOffset = record.offset() + 1;
                     }
+                } else {
+                    logger.warn("Thread interrupted during JSON consumption for partition {}", partition);
+                    break;
                 }
             }
         } catch (Exception e) {
-            System.out.println("[consumePartitionRangeJSON] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in consumePartitionRangeJSON - topic: {}, partition: {}", topic, partition, e);
         }
 
-        System.out.println("[consumePartitionRangeJSON] Finished. Total matches: " + foundRecords.size());
+        logger.info("consumePartitionRangeJSON finished - partition: {}, total matches: {}", partition, foundRecords.size());
         return foundRecords;
     }
 
 
     private List<String> consumePartitionRangeString(String topic, int partition, long startOffset, long endOffset,
                                                      Properties props, List<String> rawFilters, int maxResults) {
-        System.out.println("[consumePartitionRangeString] Starting string consumption for topic=" + topic +
-                ", partition=" + partition + ", offsets=[" + startOffset + " - " + endOffset + "], maxResults=" + maxResults);
-        System.out.println("[consumePartitionRangeString] Filters: " + rawFilters);
+        logger.info("Starting consumePartitionRangeString - topic: {}, partition: {}, offsets: [{}-{}], maxResults: {}",
+                topic, partition, startOffset, endOffset, maxResults);
+        logger.debug("String filters: {}", rawFilters);
 
         List<String> foundRecords = new ArrayList<>();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
             consumer.seek(tp, startOffset);
+            logger.debug("Consumer assigned to partition {} and seeked to offset {}", partition, startOffset);
             long currentOffset = startOffset;
 
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
@@ -877,51 +816,59 @@ public class KafkaSearchController {
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
                         : 30000;
 
+                logger.debug("Polling with timeout: {}ms at offset: {}", pollTimeout, currentOffset);
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
+
                 if (records.isEmpty()) {
-                    System.out.println("[consumePartitionRangeString] No records received at offset " + currentOffset);
+                    logger.debug("No records received at offset {}, breaking consumption", currentOffset);
                     break;
                 }
+                logger.debug("Received {} records from poll", records.count());
 
-                if(!Thread.currentThread().isInterrupted()){
+                if (!Thread.currentThread().isInterrupted()) {
                     for (ConsumerRecord<String, String> record : records) {
-                        if (record.offset() > endOffset) break;
+                        if (record.offset() > endOffset) {
+                            logger.debug("Record offset {} exceeds end offset {}, breaking", record.offset(), endOffset);
+                            break;
+                        }
 
                         if (matchesFiltersString(record.value(), rawFilters)) {
                             foundRecords.add(String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
-                            System.out.println("[consumePartitionRangeString] Match found at offset " + record.offset());
+                            logger.debug("String match found at offset {}", record.offset());
 
                             if (foundRecords.size() >= maxResults) {
-                                System.out.println("[consumePartitionRangeString] Reached maxResults limit (" + maxResults + ")");
+                                logger.debug("Reached maxResults limit ({})", maxResults);
                                 break;
                             }
                         }
 
                         currentOffset = record.offset() + 1;
                     }
+                } else {
+                    logger.warn("Thread interrupted during string consumption for partition {}", partition);
+                    break;
                 }
             }
         } catch (Exception e) {
-            System.out.println("[consumePartitionRangeString] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in consumePartitionRangeString - topic: {}, partition: {}", topic, partition, e);
         }
 
-        System.out.println("[consumePartitionRangeString] Finished. Total matches: " + foundRecords.size());
+        logger.info("consumePartitionRangeString finished - partition: {}, total matches: {}", partition, foundRecords.size());
         return foundRecords;
     }
 
 
     private List<String> consumePartitionRangePattern(String topic, int partition, long startOffset, long endOffset,
                                                       Properties props, List<Pattern> patterns, int maxResults) {
-        System.out.println("[consumePartitionRangePattern] Starting pattern consumption for topic=" + topic +
-                ", partition=" + partition + ", offsets=[" + startOffset + " - " + endOffset + "], maxResults=" + maxResults);
-        System.out.println("[consumePartitionRangePattern] Patterns: " + patterns);
+        logger.info("Starting consumePartitionRangePattern - topic: {}, partition: {}, offsets: [{}-{}], maxResults: {}, patterns count: {}",
+                topic, partition, startOffset, endOffset, maxResults, patterns.size());
 
         List<String> foundRecords = new ArrayList<>();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
             consumer.seek(tp, startOffset);
+            logger.debug("Consumer assigned to partition {} and seeked to offset {}", partition, startOffset);
             long currentOffset = startOffset;
 
             while (currentOffset <= endOffset && foundRecords.size() < maxResults) {
@@ -929,36 +876,44 @@ public class KafkaSearchController {
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
                         : 30000;
 
+                logger.debug("Polling with timeout: {}ms at offset: {}", pollTimeout, currentOffset);
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
+
                 if (records.isEmpty()) {
-                    System.out.println("[consumePartitionRangePattern] No records received at offset " + currentOffset);
+                    logger.debug("No records received at offset {}, breaking consumption", currentOffset);
                     break;
                 }
+                logger.debug("Received {} records from poll", records.count());
 
                 if (!Thread.currentThread().isInterrupted()) {
                     for (ConsumerRecord<String, String> record : records) {
-                        if (record.offset() > endOffset) break;
+                        if (record.offset() > endOffset) {
+                            logger.debug("Record offset {} exceeds end offset {}, breaking", record.offset(), endOffset);
+                            break;
+                        }
 
                         if (matchesPatterns(record.value(), patterns)) {
                             foundRecords.add(String.format("{\"offset\": %d, \"value\": \"%s\"}", record.offset(), record.value()));
-                            System.out.println("[consumePartitionRangePattern] Match found at offset " + record.offset());
+                            logger.debug("Pattern match found at offset {}", record.offset());
 
                             if (foundRecords.size() >= maxResults) {
-                                System.out.println("[consumePartitionRangePattern] Reached maxResults limit (" + maxResults + ")");
+                                logger.debug("Reached maxResults limit ({})", maxResults);
                                 break;
                             }
                         }
 
                         currentOffset = record.offset() + 1;
                     }
+                } else {
+                    logger.warn("Thread interrupted during pattern consumption for partition {}", partition);
+                    break;
                 }
             }
         } catch (Exception e) {
-            System.out.println("[consumePartitionRangePattern] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in consumePartitionRangePattern - topic: {}, partition: {}", topic, partition, e);
         }
 
-        System.out.println("[consumePartitionRangePattern] Finished. Total matches: " + foundRecords.size());
+        logger.info("consumePartitionRangePattern finished - partition: {}, total matches: {}", partition, foundRecords.size());
         return foundRecords;
     }
 
@@ -969,13 +924,14 @@ public class KafkaSearchController {
             for (Map.Entry<String, String> entry : filters.entrySet()) {
                 JsonNode val = node.get(entry.getKey());
                 if (val == null || !val.asText().equals(entry.getValue())) {
-                    System.out.println("[matchesFiltersJSON] Mismatch on key: " + entry.getKey() + ", expected: " + entry.getValue());
+                    logger.debug("JSON filter mismatch on key: {}, expected: {}, actual: {}",
+                            entry.getKey(), entry.getValue(), val != null ? val.asText() : "null");
                     return false;
                 }
             }
             return true;
         } catch (Exception e) {
-            System.out.println("[matchesFiltersJSON] Invalid JSON format or parse error: " + e.getMessage());
+            logger.debug("Invalid JSON format or parse error in matchesFiltersJSON", e);
             return false;
         }
     }
@@ -987,12 +943,12 @@ public class KafkaSearchController {
 
         for (String filter : rawFilters) {
             if (!value.toLowerCase().contains(filter.toLowerCase().trim())) {
-                System.out.println("[matchesFiltersString] Mismatch: value does not contain filter -> " + filter);
+                logger.debug("String filter mismatch: value does not contain filter '{}'", filter);
                 return false;
             }
         }
 
-        System.out.println("[matchesFiltersString] All filters matched.");
+        logger.debug("All string filters matched");
         return true;
     }
 
@@ -1003,17 +959,21 @@ public class KafkaSearchController {
         for (Pattern pattern : patterns) {
             Matcher matcher = pattern.matcher(value);
             if (!matcher.find()) {
-                System.out.println("[matchesPatterns] Mismatch: value does not match pattern -> " + pattern.pattern());
+                logger.debug("Pattern mismatch: value does not match pattern '{}'", pattern.pattern());
                 return false;
             }
         }
 
-        System.out.println("[matchesPatterns] All patterns matched.");
+        logger.debug("All patterns matched");
         return true;
     }
 
 
     private List<String> copyMode(SearchRequest request) {
+        logger.info("Starting copyMode - source topic: {}, target topic: {}, partition: {}, offsets: [{}-{}]",
+                request.getTopic(), request.getTargetTopic(), request.getPartition(),
+                request.getStartOffset(), request.getEndOffset());
+
         List<String> copiedMessages = new ArrayList<>();
 
         String sourceTopic = request.getTopic();
@@ -1028,18 +988,18 @@ public class KafkaSearchController {
         Map<String, String> filters = request.getFilters();
         List<String> rawFilters = request.getRawFilters();
 
-        System.out.println("[copyMode] Starting copy from topic=" + sourceTopic + ", partition=" + partitionId +
-                ", offsets=[" + startOffset + " - " + endOffset + "] to topic=" + targetTopic +
-                " using filterMode=" + filterMode);
+        logger.debug("Copy filterMode: {}, filters: {}, rawFilters: {}", filterMode, filters, rawFilters);
 
         Properties props = getKafkaProps(kafkaAddress);
         try (
                 KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
                 KafkaProducer<String, String> producer = new KafkaProducer<>(getKafkaProducerProps(targetKafka));
         ) {
+            logger.debug("Consumer and producer created successfully");
             TopicPartition partition = new TopicPartition(sourceTopic, partitionId);
             consumer.assign(Collections.singletonList(partition));
             consumer.seek(partition, startOffset);
+            logger.debug("Consumer assigned to partition {} and seeked to start offset {}", partitionId, startOffset);
 
             boolean done = false;
             while (!done) {
@@ -1047,10 +1007,16 @@ public class KafkaSearchController {
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
                         : 30000;
 
+                logger.debug("Polling in copyMode with timeout: {}ms", pollTimeout);
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
+
+                if (records.isEmpty()) {
+                    logger.debug("No records received in copyMode, continuing...");
+                }
 
                 for (ConsumerRecord<String, String> record : records) {
                     if (record.offset() > endOffset) {
+                        logger.info("Reached end offset {} in copyMode, stopping", endOffset);
                         done = true;
                         break;
                     }
@@ -1069,16 +1035,16 @@ public class KafkaSearchController {
                         ProducerRecord<String, String> newRecord = new ProducerRecord<>(targetTopic, record.key(), record.value());
                         producer.send(newRecord);
                         copiedMessages.add("Copied offset " + record.offset());
-                        System.out.println("[copyMode] Copied message at offset " + record.offset());
+                        logger.debug("Copied message from offset {} to target topic", record.offset());
                     }
                 }
             }
 
+            logger.debug("Flushing producer in copyMode...");
             producer.flush();
-            System.out.println("[copyMode] Copy operation completed. Total copied: " + copiedMessages.size());
+            logger.info("copyMode completed successfully. Total copied: {}", copiedMessages.size());
         } catch (Exception e) {
-            System.out.println("[copyMode] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in copyMode", e);
             copiedMessages.add("Error: " + e.getMessage());
         }
 
@@ -1087,14 +1053,14 @@ public class KafkaSearchController {
 
 
     private List<String> DateMode(SearchRequest request) {
+        logger.info("Starting DateMode - topic: {}, partition: {}, dateKey: {}, date prefix: {}",
+                request.getTopic(), request.getPartition(), request.getDateKey(), request.getDate());
+
         String topic = request.getTopic();
         String kafkaAddress = request.getKafkaAddress();
         int partition = request.getPartition();
         String key = request.getDateKey();
         String expectedDatePrefix = request.getDate();
-
-        System.out.println("[DateMode] Starting date-based binary search in topic=" + topic + ", partition=" + partition);
-        System.out.println("[DateMode] Searching for key='" + key + "' with date prefix='" + expectedDatePrefix + "'");
 
         Properties props = getKafkaProps(kafkaAddress);
         List<String> results = new ArrayList<>();
@@ -1103,31 +1069,36 @@ public class KafkaSearchController {
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             TopicPartition tp = new TopicPartition(topic, partition);
             consumer.assign(List.of(tp));
+
+            logger.debug("Seeking to beginning to get start offset...");
             consumer.seekToBeginning(List.of(tp));
             long low = consumer.position(tp);
 
+            logger.debug("Seeking to end to get end offset...");
             consumer.seekToEnd(List.of(tp));
             long high = consumer.position(tp) - 1;
 
-            System.out.println("[DateMode] Offset range: [" + low + " - " + high + "]");
-
-
+            logger.info("Binary search range for DateMode: [{} - {}]", low, high);
 
             long closestAfterOffset = -1;
             while (low <= high) {
                 long mid = (low + high) / 2;
+                logger.debug("Binary search - checking offset: {}", mid);
                 consumer.seek(tp, mid);
 
                 long pollTimeout = props.containsKey("request.timeout.ms")
                         ? Long.parseLong(props.getProperty("request.timeout.ms"))
                         : 30000;
+
+                logger.debug("Polling at mid offset {} with timeout: {}ms", mid, pollTimeout);
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(pollTimeout));
+
                 Optional<ConsumerRecord<String, String>> recordOpt = records.records(tp).stream()
                         .filter(r -> r.offset() == mid)
                         .findFirst();
 
                 if (recordOpt.isEmpty()) {
-                    System.out.println("[DateMode] No record at offset " + mid + ". Moving right.");
+                    logger.debug("No record at offset {}, moving right in binary search", mid);
                     low = mid + 1;
                     continue;
                 }
@@ -1137,7 +1108,7 @@ public class KafkaSearchController {
                 JsonNode dateNode = json.get(key);
 
                 if (dateNode == null || dateNode.asText().length() < 14) {
-                    System.out.println("[DateMode] Invalid or missing full timestamp at offset " + mid + ". Skipping.");
+                    logger.debug("Invalid or missing timestamp at offset {}, moving left in binary search", mid);
                     high = mid - 1;
                     continue;
                 }
@@ -1145,16 +1116,17 @@ public class KafkaSearchController {
                 String datePrefix = dateNode.asText().substring(0, 14);
                 int cmp = datePrefix.compareTo(expectedDatePrefix);
 
-                System.out.println("[DateMode] Offset " + mid + " has date prefix '" + datePrefix + "', compareTo=" + cmp);
+                logger.debug("Binary search - offset {} has date prefix '{}', comparison result: {}", mid, datePrefix, cmp);
 
                 if (cmp < 0) {
                     low = mid + 1;
                 } else {
                     if (cmp == 0) {
                         resultOffset = mid;
-                        System.out.println("[DateMode] Match found at offset " + mid);
-                    }else{
+                        logger.info("Exact match found at offset {} in DateMode", mid);
+                    } else {
                         closestAfterOffset = mid;
+                        logger.debug("Setting closest after offset to {}", mid);
                     }
                     high = mid - 1;
                 }
@@ -1162,23 +1134,26 @@ public class KafkaSearchController {
 
             if (resultOffset == -1 && closestAfterOffset != -1) {
                 resultOffset = closestAfterOffset;
-                System.out.println("[DateMode] No exact match found. Using closest after offset " + resultOffset);
+                logger.info("No exact match in DateMode. Using closest after offset: {}", resultOffset);
             }
 
-
             if (resultOffset != -1) {
+                logger.debug("Fetching records starting from result offset: {}", resultOffset);
                 consumer.seek(tp, resultOffset);
                 int fetchedCount = 0;
                 long maxOffset = resultOffset + 100;
 
                 while (fetchedCount < 20) {
+                    logger.debug("Fetching batch in DateMode, current count: {}", fetchedCount);
                     ConsumerRecords<String, String> fetchedRecords = consumer.poll(Duration.ofMillis(5000));
                     if (fetchedRecords.isEmpty()) {
+                        logger.debug("No more records available in DateMode fetch");
                         break;
                     }
 
                     for (ConsumerRecord<String, String> record : fetchedRecords.records(tp)) {
                         if (record.offset() >= maxOffset) {
+                            logger.debug("Reached max offset {} in DateMode fetch", maxOffset);
                             break;
                         }
 
@@ -1188,26 +1163,22 @@ public class KafkaSearchController {
                         result.set("value", jsonNode);
                         results.add(result.toString());
                         fetchedCount++;
+                        logger.debug("Added record at offset {} to DateMode results", record.offset());
 
                         if (fetchedCount >= 20) break;
                     }
                 }
 
-                System.out.println("[DateMode] Retrieved " + results.size() + " records starting from offset " + resultOffset);
+                logger.info("DateMode retrieved {} records starting from offset {}", results.size(), resultOffset);
             } else {
-                System.out.println("[DateMode] No matching record found for given date prefix.");
+                logger.warn("No matching record found for given date prefix in DateMode");
             }
 
         } catch (Exception e) {
-            System.out.println("[DateMode] Error occurred: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error in DateMode for topic: {}, partition: {}", topic, partition, e);
         }
 
-
-        System.out.println("[DateMode] Search complete. Matches: " + results.size());
+        logger.info("DateMode search complete. Total matches: {}", results.size());
         return results;
     }
-
-
-
 }

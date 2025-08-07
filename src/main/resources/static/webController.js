@@ -343,11 +343,17 @@ function searchKafka(filterMode, filterIndex) {
                     ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
                     : body.rawFilters.join(", ")
                 }</div>
-  <div><strong>Mode:</strong> ${mode}${mode === "lastN" ? ` (${lastN})` : ""}${mode === "manual" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}</div>
-  <div><strong>Results Found:</strong> ${data.length}</div>
+  <div><strong>Mode:</strong>
+  ${mode}${mode === "lastN" ? ` (${lastN})` : ""}
+  ${mode === "manual" ? ` (Offsets: ${startOffset} - ${endOffset})` : ""}
+  ${mode === "date" ? ` (${body.dateKey}=${body.date})` : ""}
+${mode === "copy"
+  ? ` (To: ${body.targetKafka} - ${body.targetTopic}, Offsets: ${body.startOffset} - ${body.endOffset})`
+  : ""}
+  </div>
+   <div><strong>${mode === "copy" ? "Results Copied" : "Results Found"}:</strong> ${data.length}</div>
   <hr style="margin: 0.4rem 0;" />
 `;
-
 
             summary.style.position = "relative";
 
@@ -381,7 +387,7 @@ function searchKafka(filterMode, filterIndex) {
             retryBtn.style.right = "0.5rem";
             retryBtn.textContent = "↻ Retry";
             retryBtn.title = "Retry this search";
-            retryBtn.onclick = () => retrySearch(id);  // Burada id geçiyoruz
+            retryBtn.onclick = () => retrySearch(id);
             summary.appendChild(retryBtn);
 
 
@@ -724,8 +730,16 @@ function retrySearch(id) {
                 ? Object.entries(body.filters).map(([k, v]) => `${k}=${v}`).join(", ")
                 : body.rawFilters.join(", ")
             }</div>
-  <div><strong>Mode:</strong> ${body.mode}${body.mode === "lastN" ? ` (${body.lastN})` : ""}${body.mode === "manual" ? ` (Offsets: ${body.startOffset} - ${body.endOffset})` : ""}</div>
-  <div><strong>Results Found:</strong> ${data.length}</div>
+  <div><strong>Mode:</strong>
+  ${body.mode}
+  ${body.mode === "lastN" ? ` (${body.lastN})` : ""}
+  ${body.mode === "manual" ? ` (Offsets: ${body.startOffset} - ${body.endOffset})` : ""}
+  ${body.mode === "date" ? ` (${body.dateKey}=${body.date})` : ""}
+  ${body.mode === "copy"
+    ? ` (To: ${body.targetTopic} - ${body.targetKafka}, Offsets: ${body.startOffset} - ${body.endOffset})`
+    : ""}
+  </div>
+  <div><strong>${body.mode === "copy" ? "Results Copied" : "Results Found"}:</strong> ${data.length}</div>
   <hr style="margin: 0.4rem 0;" />`;
 
             summary.style.position = "relative";
@@ -771,7 +785,12 @@ function retrySearch(id) {
                     headerLines.push("Filters: " + body.rawFilters.join(", "));
                 }
 
-                headerLines.push(`Mode: ${body.mode}${body.mode === "lastN" ? ` (${body.lastN})` : ""}${body.mode === "manual" ? ` (Offsets: ${body.startOffset} - ${body.endOffset})` : ""}`);
+                let modeLine = `Mode: ${body.mode}`;
+                if (body.mode === "lastN") modeLine += ` (${body.lastN})`;
+                if (body.mode === "manual") modeLine += ` (Offsets: ${body.startOffset} - ${body.endOffset})`;
+                if (body.mode === "date") modeLine += ` (${body.dateKey}=${body.date})`;
+                if (body.mode === "copy") modeLine += ` (To: ${body.targetTopic} - ${body.targetKafka}, Offsets: ${body.startOffset} - ${body.endOffset})`;
+                headerLines.push(modeLine);
 
                 const resultsText = Array.from(newBox.querySelectorAll(".record-entry"))
                     .map(div => div.textContent)
@@ -813,3 +832,4 @@ function retrySearch(id) {
             alert("Retry failed.");
         });
 }
+
